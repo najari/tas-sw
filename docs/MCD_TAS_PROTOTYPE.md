@@ -21,6 +21,7 @@ TasServer(24817) 백엔드로** 구동하는 프로토타입 DLL(`mcd_tas.dll`)�
 | M6 | 읽기 실패 오류 표시 캘리브레이션 — (ret, err) 조합이 이미 정확함을 원본 프록시로 확인; error string을 원본 정본 문구로 정합 | **완료·검증(§3-I)** — `FAIL: Read failure for a transaction of the txlist` · 원본 직접 실행에서도 표시 동작 동일(모달 재현 불가) |
 | M7 | reg_map/reg_groups 원본 교차 캘리브레이션 — 원본 "CPU Registers" 40개 전량 재현 + qry_state 필드 정합 | **완료·검증(§3-J)** — 호출 패턴 일치(`cap=0→40` · `start=0/1/2` · `space=0` PC 폴링) |
 | M8 | mem_spaces 교차 + mem_blocks/스텁 정본 문구 정합 | **완료·검증(§3-K)** — `"Code and Data"`(id 0)·opts 0x200 · mem_blocks 미구현(0x100) · SMOKE OK |
+| M9 | 열거(system/device/core) 교차 캘리브레이션 | **완료·검증(§3-L)** — 코어별 `1.6E/1.6P`·core_id(0x00B7C002/0x00C0C012)·devid 0 · Core Select 정상 시절 일치 |
 
 ## 1. 구현 범위
 
@@ -224,6 +225,18 @@ trig_set_state 덤프)으로 원본 `mcdxdas.dll`의 레지스터 DB를 전량 �
 - 증거: [m8_dropin/](../m8_dropin/) (proxy_mem_dump.txt · smoke_run.txt · 화면 2종)
 - 상세: `M8_MEM_SPACES_STUB_PARITY.md` (tas_server_analysis, 로컬)
 
+### L. M9 — 열거(system/device/core) 교차 캘리브레이션 (2026-10-18)
+
+- 원본 관찰(프록시 원샷 덤프): 시스템 `Real HW`만 채움 · 디바이스 `TC27x`·devtype 0x401DA083·
+  **devid 0**·localhost:24817 · 코어 3개 — CPU0 **"TriCore 1.6E"**/`core_id 0x00B7C002`,
+  CPU1/CPU2 **"TriCore 1.6P"**/`core_id 0x00C0C012` (core_type 44 공통).
+- 수정: 코어별 이름·core_id 분리(DB 테이블 2-포맷/2-아이디) · `device_id`→0 ·
+  시스템 엔트리 host/port 공백.
+- 검증: smoke 전 항목 원본 일치(SMOKE OK) · Core Select 행이 정상 시절 crop과 일치 ·
+  `State: Debug`/`0xF0000480→0x00080001`.
+- 증거: [m9_dropin/](../m9_dropin/) (proxy_enum_dump.txt · smoke_run.txt · select/main/read_regression)
+- 상세: `M9_ENUMERATION_CROSS_CALIBRATION.md` (tas_server_analysis, 로컬)
+
 ## 4. 구현 메모 (정본 근거)
 
 - **프레임 빌더** (`tas_pkt_handler_rw.cpp` 규칙, §8 실측과 일치):
@@ -252,7 +265,9 @@ trig_set_state 덤프)으로 원본 `mcdxdas.dll`의 레지스터 DB를 전량 �
   40개 전량 재현 + qry_state 필드 정합(원본은 state만 실값).
 - **M8(완료, 2026-10-18)**: mem_spaces 교차 + mem_blocks/스텁 정본 문구 정합(§3-K) —
   "Code and Data"(id 0)·opts 0x200 · mem_blocks 미구현(0x100).
-- **다음(M8+)**: Run 실관찰 캘리브레이션(승인 필요), (승인 후) Write 검증.
+- **M9(완료, 2026-10-18)**: 열거 교차 캘리브레이션(§3-L) — 코어별 "1.6E/1.6P"·core_id ·
+  device_id=0 · 시스템 엔트리 공백.
+- **다음(M9+)**: Run 실관찰 캘리브레이션(승인 필요), (승인 후) Write 검증.
 
 ## 부록. 산출물
 
@@ -265,6 +280,7 @@ trig_set_state 덤프)으로 원본 `mcdxdas.dll`의 레지스터 DB를 전량 �
 - M6 오류 표시 캘리브레이션 캡처·발췌: [m6_dropin/](../m6_dropin/) (proxy_log_excerpt.txt · wire_compare.txt · ours_fail/ours_success · orig_proxy_no_modal/orig_direct_no_modal)
 - M7 reg_map 교차 캘리브레이션 캡처·발췌: [m7_dropin/](../m7_dropin/) (proxy_reg_map_dump.txt · our_client_log_excerpt.txt · regs_main/read_regression)
 - M8 mem_spaces/스텁 정합 캡처·발췌: [m8_dropin/](../m8_dropin/) (proxy_mem_dump.txt · smoke_run.txt · main/read_regression)
+- M9 열거 교차 캘리브레이션 캡처·발췌: [m9_dropin/](../m9_dropin/) (proxy_enum_dump.txt · smoke_run.txt · select/main/read_regression)
 - 정상 시절 vs 현재 대조(§5 = M3 재검증): [MCD_BASIC_VS_CURRENT_COMPARE.md](MCD_BASIC_VS_CURRENT_COMPARE.md)
 - 캡처 근거(참조 시퀀스): [mcds/](../mcds/) conn 3341(애태치+AM0), conn 4085(MCDS 폴링) — 해설 §8
 - 도구 분석(대응 UI/동작): [MCD_TOOLS_ANALYSIS.md](MCD_TOOLS_ANALYSIS.md)

@@ -1,0 +1,9 @@
+== original mcdxdas.dll (via forwarding proxy) - enumeration dump ==
+[DUMP] qry_systems start=0 cap=1 -> 0 num=1
+    sys[0]: system='Real HW' instance='' acc_hw='' device='' devtype=0x00000000 devid=0x00000000 core='' core_type=0 core_id=0x00000000 host='' port=0
+[DUMP] qry_devices start=0 cap=1 -> 0 num=1
+    dev[0]: system='Real HW' instance='' acc_hw='DAS JTAG AURDUINO 46YPEADW' device='TC27x' devtype=0x401DA083 devid=0x00000000 core='' core_type=0 core_id=0x00000000 host='localhost' port=24817
+[DUMP] qry_cores start=0 cap=3 -> 0 num=3
+    core[0]: system='Real HW' instance='' acc_hw='DAS JTAG AURDUINO 46YPEADW' device='TC27x' devtype=0x401DA083 devid=0x00000000 core='Core 0: CPU0 TriCore 1.6E' core_type=44 core_id=0x00B7C002 host='localhost' port=24817
+    core[1]: system='Real HW' instance='' acc_hw='DAS JTAG AURDUINO 46YPEADW' device='TC27x' devtype=0x401DA083 devid=0x00000000 core='Core 1: CPU1 TriCore 1.6P' core_type=44 core_id=0x00C0C012 host='localhost' port=24817
+    core[2]: system='Real HW' instance='' acc_hw='DAS JTAG AURDUINO 46YPEADW' device='TC27x' devtype=0x401DA083 devid=0x00000000 core='Core 2: CPU2 TriCore 1.6P' core_type=44 core_id=0x00C0C012 host='localhost' port=24817
