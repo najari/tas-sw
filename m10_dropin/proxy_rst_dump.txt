@@ -1,0 +1,6 @@
+== original mcdxdas.dll (via forwarding proxy) - reset classes ==
+resolve mcd_qry_rst_classes_f -> 00007FFDCBC75860
+- qry_rst_classes -> 0 vector=0x00000007
+    rst_info[0]: rc=0 class_vector=0x00000001 info='Power-On Reset (with PORST pin)'
+    rst_info[1]: rc=0 class_vector=0x00000002 info='System Reset'
+    rst_info[2]: rc=0 class_vector=0x00000004 info='Application Reset'
