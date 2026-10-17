@@ -1,0 +1,16 @@
+# (발췌) 드롭인 GUI Read로 확인한 TC27x CPU0 CSFR 디버그 레지스터 (2026-10-18)
+# mcd_basic_client.exe + mcd_tas.dll(drop-in, mcdxdas.dll 자리) — 애태치 상태, Address/Read(Space 0, Bytes 4)
+# (읽기 전용 — 타깃 상태 변경 없음)
+#
+# 1) 0xF881FD00 (CPU0 CSFR + FD00H = DBGSR, Debug Status Register) -> 0x0000101B
+#    해독: DE=1 (Debug Enable), HALT[2:1]=01b (CPU halted), SIH=1 (Suspend-In asserted),
+#          SUSP=1 (Suspend-Out active), PREVSUSP=0, PEVT=0, EVTSRC[12:8]=16 (TR0EVT)
+#    참고: 정상 시절(2026-10-17) 캡처값 = 0x00001013 (동일 해독, SIH=0 차이)
+# 2) 0xF881FE08 (CPU0 CSFR + FE08H = PC, Program Counter) -> 0xA0000020
+#    = UI Instruction Pointer 표시값과 동일 (bit0 고정 0 규칙 준수)
+# 3) 0xF881FE18 (CPU0 CSFR + FE18H = CPU_ID) -> 0x00B7C002
+#    = TC27x D-Step UM Table 5-19의 CPU_ID(TC1.6E) 리셋값 00B7 C002H와 일치,
+#      프로토타입 코어 정보의 core_id와도 동일
+#
+# 화면: dbgsr_read.png / pc_read.png / cpuid_read.png
+# 상세 해독·출처: docs/TC27X_DEBUG_REGISTERS.md

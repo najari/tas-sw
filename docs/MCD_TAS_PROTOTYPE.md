@@ -16,6 +16,7 @@ TasServer(24817) 백엔드로** 구동하는 프로토타입 DLL(`mcd_tas.dll`)�
 | M2 | 코어 열기(세션 + 핫 애태치)·메모리 공간 열거·PL0 읽기/쓰기 (6함수) | 완료·검증 — 애태치 성공 경로 확보(§3-D; §3-C의 실패는 USB 허브 환경 문제였음) |
 | M3 | 원본 `mcd_basic_client.exe` drop-in(`mcdxdas.dll` 자리) GUI 구동 | **GUI 검증 완료(§3-E)** — Select/애태치/Core Info/Read |
 | M4 | State/IP 실값 복구 (`qry_reg_map` PC 레지스터 + `qry_state` 캘리브레이션) | **완료·검증(§3-F)** — `State: Debug / IP: 0xA0000020` (정상 시절 파리티) |
+| (참고) | TC27x 디버그 레지스터 규명 — PC `0xF881FE08`·DBGSR `0xF881FD00` (해독·라이브 검증) | 완료(§3-G) — [TC27X_DEBUG_REGISTERS.md](TC27X_DEBUG_REGISTERS.md) |
 
 ## 1. 구현 범위
 
@@ -133,8 +134,22 @@ AM0 접근의 전제 조건. AM15(서버 내부)는 DC 없이 SS 직후부터 �
 - 회귀: GUI Read `0xF0000480` → `0x00080001` ([m4_dropin/read_regression.png](../m4_dropin/read_regression.png)).
 - 발췌 로그: [m4_dropin/log_excerpt.txt](../m4_dropin/log_excerpt.txt)
 
-후속: `mcd_qry_state_f` 실상태 도출(현재 DEBUG 고정 = 캘리브레이션 — 디버그 레지스터 의미 규명 + Run/Halt
-캘리브레이션 승인 필요), 읽기 실패 시 모달 경고 유무 차이 캘리브레이션.
+후속: `mcd_qry_state_f` 실상태 도출 — 디버그 레지스터(DBGSR) 규명 완료(§3-G), Run/Halt 실관찰
+캘리브레이션 승인 필요. 읽기 실패 시 모달 경고 유무 차이 캘리브레이션.
+
+### G. M4 후속 — TC27x 디버그 레지스터 규명 (2026-10-18)
+
+클라이언트가 폴링하는 `0xF881FE08`과 정상 시절 최초 1회 판독된 `0xF881FD00`의 정체를
+TC27x D-Step UM(+TC1.6 코어 매뉴얼)으로 규명하고, 드롭인 GUI Read(읽기 전용)로 라이브 검증.
+
+- 주소 구조: `0xF8810000–0xF881FFFF` = **CPU0 CSFR 창**(UM Table 3-3) → 오프셋 `FE08H` = **PC**,
+  `FD00H` = **DBGSR**(Debug Status Register).
+- 라이브 Read 3/3 일치: `0xF881FD00` = `0x0000101B`(HALT=01b 정지 · DE=1 · SIH=1 · EVTSRC=16=TR0EVT),
+  `0xF881FE08` = `0xA0000020`(UI IP와 동일), `0xF881FE18` = `0x00B7C002`(CPU_ID TC1.6E 시그니처).
+  정상 시절 캡처 `0x1013`도 동일 해독(SIH=0 차이).
+- 함의: `mcd_qry_state_f` 실상태 구현 경로 확보 — `DBGSR.HALT[2:1]` → Run/Halt, `EVTSRC` → 정지 소스.
+- 전체 해독·출처: **[TC27X_DEBUG_REGISTERS.md](TC27X_DEBUG_REGISTERS.md)** ·
+  화면: [tc27x_dbg_regs/](../tc27x_dbg_regs/)
 
 ## 4. 구현 메모 (정본 근거)
 
@@ -153,12 +168,13 @@ AM0 접근의 전제 조건. AM15(서버 내부)는 DC 없이 SS 직후부터 �
 - ~~**DC 성공 경로 미실측** — 어댑터 정상화 후 `--attach` 재실행 (성공 시 `device_type=0x401DA083`,
   `addr_map_mask` `0x8000→0x8001` 전환 기대).~~ → **해결(§3-D)**: USB 허브→본체 직결로 복구 —
   애태치 성공, `device_type=0x401DA083`·`addr_map_mask=0x8001` 확인.
-- `mcd_qry_state_f`=DEBUG 고정(캘리브레이션 — 실상태 Run/Halt 도출은 후속),
+- `mcd_qry_state_f`=DEBUG 고정(캘리브레이션 — 실상태 Run/Halt 도출은 후속; DBGSR 해독 완료 §3-G),
   메모리 공간 1개(AM0), 캐시/가상 공간·메모리 블록 미노출.
 - 트랜잭션 리스트 중단 시 이미 전송된 프레임은 취소 불가(서버가 전량 실행) — 집계만 중단 시점 기준.
 - 트리거/채널/트레이스/레지스터/리셋 등은 스텁. 단일 전역 임계구역 직렬화(재진입 없음).
-- **다음(M4+)**: `mcd_qry_state_f` 실상태(Run/Halt·stop info — 캘리브레이션 승인 필요), 매핑 캘리브레이션,
-  (승인 후) Write 검증, reg groups/trig 확장, 오류 반환 조합 캘리브레이션(실패 표시 방식).
+- **다음(M4+)**: `mcd_qry_state_f` 실상태 — **DBGSR(`0xF881FD00`) 기반 구현 가능**(해독 완료, §3-G;
+  Run/Halt 실관찰 캘리브레이션은 승인 필요), 매핑 캘리브레이션, (승인 후) Write 검증,
+  reg groups/trig 확장, 오류 반환 조합 캘리브레이션(실패 표시 방식).
 
 ## 부록. 산출물
 
@@ -166,6 +182,7 @@ AM0 접근의 전제 조건. AM15(서버 내부)는 DC 없이 SS 직후부터 �
   · 성공 재검증(2026-10-18): [mcd_tas_probe_idcode_ok.log](../logs/mcd_tas_probe_idcode_ok.log) · [mcd_tas_attach_ok.log](../logs/mcd_tas_attach_ok.log)
 - M3 GUI 캡처·발췌: [m3_dropin/](../m3_dropin/) (select · main_after_attach · coreinfo · read_70000000 · read_f0000480 · log_excerpt.txt)
 - M4 State/IP 복구 캡처·발췌: [m4_dropin/](../m4_dropin/) (state_ip_recovered · read_regression · log_excerpt.txt)
+- M4+ 디버그 레지스터 검증 캡처·발췌: [tc27x_dbg_regs/](../tc27x_dbg_regs/) (dbgsr_read · pc_read · cpuid_read · log_excerpt.txt)
 - 정상 시절 vs 현재 대조(§5 = M3 재검증): [MCD_BASIC_VS_CURRENT_COMPARE.md](MCD_BASIC_VS_CURRENT_COMPARE.md)
 - 캡처 근거(참조 시퀀스): [mcds/](../mcds/) conn 3341(애태치+AM0), conn 4085(MCDS 폴링) — 해설 §8
 - 도구 분석(대응 UI/동작): [MCD_TOOLS_ANALYSIS.md](MCD_TOOLS_ANALYSIS.md)
