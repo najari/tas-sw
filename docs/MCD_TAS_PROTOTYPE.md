@@ -13,7 +13,8 @@ TasServer(24817) 백엔드로** 구동하는 프로토타입 DLL(`mcd_tas.dll`)�
 | 마일스톤 | 내용 | 상태 |
 |---|---|---|
 | M1 | 초기화·서버·시스템/디바이스/코어 열거 (11함수) | 완료·검증 |
-| M2 | 코어 열기(세션 + 핫 애태치)·메모리 공간 열거·PL0 읽기/쓰기 (6함수) | 구현·읽기 검증 완료 / DC 성공 경로는 어댑터 상태로 보류(§3-C) |
+| M2 | 코어 열기(세션 + 핫 애태치)·메모리 공간 열거·PL0 읽기/쓰기 (6함수) | 완료·검증 — 애태치 성공 경로 확보(§3-D; §3-C의 실패는 USB 허브 환경 문제였음) |
+| M3 | 원본 `mcd_basic_client.exe` drop-in(`mcdxdas.dll` 자리) GUI 구동 | **GUI 검증 완료(§3-E)** — Select/애태치/Core Info/Read. 잔여: qry_state 실상태·매핑 캘리브레이션 |
 
 ## 1. 구현 범위
 
@@ -73,12 +74,40 @@ AM0 접근의 전제 조건. AM15(서버 내부)는 DC 없이 SS 직후부터 �
 
 ### C. 애태치 시도 (`--attach`, 승인 하 실행) → [mcd_tas_attach.log](../logs/mcd_tas_attach.log)
 
+> **정정(2026-10-18): 아래 실패는 환경 문제(USB 허브 경유로 인한 TAP 미응답 고착)였음 — 본체 직결 후 성공으로 대체(§3-D).**
+
 - `SESSION_START`/`PING`/`SET_DEVICE_KEY`/AM15 정보 읽기까지 모두 성공.
 - `DEVICE_CONNECT`만 `tas_err=0x20`(TAS_PL1_ERR_CMD_FAILED) 응답 — **요청 바이트는 §8 실캡처와 동일**, 프로토콜 문제 아님.
 - 원인은 **환경(어댑터 미식별)**: 서버가 식별된 디바이스 없음을 보고(AM15 `0xD000` 디스크립터 전부 0,
   `addr_map_mask=0x8000`) + PnP에 `USB-SERIAL CH340 (COM3) Status=Unknown`(AURDUINO 어댑터).
 - 실패는 `MCD_ERR_CONNECTION`(0x200)으로 보고됨(메시지에 tas_err 원코드 + "no identified device" 진단 포함).
 - DC가 성공하지 못했으므로 **타깃 상태 변화 없음**.
+
+### D. 애태치 성공 재검증 (2026-10-18) — USB 허브 원인 해결
+
+- 근본 원인 확정: **USB 허브 경유로 인한 타깃 reset 고착**(동일 증상 포럼 보고와 일치) — 허브를 제거하고
+  PC 본체 직결로 전환하자 즉시 복구(LocationPaths `...#USBROOT(0)#USB(3)#USB(2)` → `...#USBROOT(0)#USB(2)`, 13:06 재인식).
+- `tas_probe --idcode`: devtype `0x401DA083`, hash `LBHJYL (0x4013A2AA)`, `device_id 47427060 11080040 64945FCB 20E65C06`,
+  @0xD000 `"TriCore-Family"`, 네이티브 JTAG 스캔 전 아이템 err=0x80, IDCODE MATCH
+  → [mcd_tas_probe_idcode_ok.log](../logs/mcd_tas_probe_idcode_ok.log)
+- `mcd_tas_smoke --attach`: **DEVICE_CONNECT 성공**, `addr_map_mask=0x8001`(AM0|AM15), 'TC27x' 3코어,
+  **RD32 @0xF0000480 = 0x00080001**(§2-#13 정상 시그니처와 일치)
+  → [mcd_tas_attach_ok.log](../logs/mcd_tas_attach_ok.log)
+
+### E. M3 — `mcd_basic_client.exe` drop-in GUI 검증 (2026-10-18)
+
+원본 MCD Basic Client(DAS64)에 `mcd_tas.dll`을 `mcdxdas.dll` 자리로 배치(drop-in) — **GUI 전 구간 실동작**:
+
+- Select → 애태치 → 코어 열기: 타이틀 `DAS JTAG AURDUINO 46YPEADW`, 로그 `session attached(0x401DA083) → core 0 opened('TC27x')`
+  ([m3_dropin/select.png](../m3_dropin/select.png), [main_after_attach.png](../m3_dropin/main_after_attach.png)).
+- Core Info 다이얼로그: 전 항목 = DLL 열거 값 (core `Core 0: CPU0 TriCore 1.6E`, core_type 44, core_id `0x00B7C002`)
+  → [m3_dropin/coreinfo.png](../m3_dropin/coreinfo.png)
+- GUI Read: `0x70000000` → `0x00000000` ([read_70000000.png](../m3_dropin/read_70000000.png));
+  `0xF0000480` → **`0x00080001`** — 정상 시절 시그니처와 일치 ([read_f0000480.png](../m3_dropin/read_f0000480.png)).
+  발췌 로그: [m3_dropin/log_excerpt.txt](../m3_dropin/log_excerpt.txt)
+- 잔여 차이: State/IP 필드 `Unknown`/`XXXXXXXX` (`mcd_qry_state_f` 미구현 + 클라이언트 자체 RD16@0x0 폴링 0x8D) — 후속.
+- 실무 노트(주소 `0x` 접두 필수 = base-0 파서, 모달 다이얼로그, 픽셀 클릭 등):
+  [MCD_BASIC_VS_CURRENT_COMPARE.md](MCD_BASIC_VS_CURRENT_COMPARE.md) §5
 
 ## 4. 구현 메모 (정본 근거)
 
@@ -94,15 +123,21 @@ AM0 접근의 전제 조건. AM15(서버 내부)는 DC 없이 SS 직후부터 �
 
 ## 5. 한계와 로드맵
 
-- **DC 성공 경로 미실측** — 어댑터 정상화 후 `--attach` 재실행 (성공 시 `device_type=0x401DA083`,
-  `addr_map_mask` `0x8000→0x8001` 전환 기대).
-- `mcd_qry_state_f`=UNKNOWN, 메모리 공간 1개(AM0), 캐시/가상 공간·메모리 블록 미노출.
+- ~~**DC 성공 경로 미실측** — 어댑터 정상화 후 `--attach` 재실행 (성공 시 `device_type=0x401DA083`,
+  `addr_map_mask` `0x8000→0x8001` 전환 기대).~~ → **해결(§3-D)**: USB 허브→본체 직결로 복구 —
+  애태치 성공, `device_type=0x401DA083`·`addr_map_mask=0x8001` 확인.
+- `mcd_qry_state_f`=UNKNOWN(State/IP 필드 `Unknown`/`XXXXXXXX` — 원본 시절 `Debug`/`0xA0000020`),
+  메모리 공간 1개(AM0), 캐시/가상 공간·메모리 블록 미노출.
 - 트랜잭션 리스트 중단 시 이미 전송된 프레임은 취소 불가(서버가 전량 실행) — 집계만 중단 시점 기준.
 - 트리거/채널/트레이스/레지스터/리셋 등은 스텁. 단일 전역 임계구역 직렬화(재진입 없음).
-- **다음(M3)**: `mcd_basic_client.exe` drop-in(`mcdxdas.dll` 자리) 실험, 매핑 캘리브레이션.
+- **다음(M3+)**: `mcd_qry_state_f` 실상태(PC/stop info), 매핑 캘리브레이션, (승인 후) Write 검증,
+  reg groups/trig, 오류 반환 조합 캘리브레이션(실패 표시 방식).
 
 ## 부록. 산출물
 
 - 검증 로그: [mcd_tas_probe.log](../logs/mcd_tas_probe.log) · [mcd_tas_smoke.log](../logs/mcd_tas_smoke.log) · [mcd_tas_attach.log](../logs/mcd_tas_attach.log)
+  · 성공 재검증(2026-10-18): [mcd_tas_probe_idcode_ok.log](../logs/mcd_tas_probe_idcode_ok.log) · [mcd_tas_attach_ok.log](../logs/mcd_tas_attach_ok.log)
+- M3 GUI 캡처·발췌: [m3_dropin/](../m3_dropin/) (select · main_after_attach · coreinfo · read_70000000 · read_f0000480 · log_excerpt.txt)
+- 정상 시절 vs 현재 대조(§5 = M3 재검증): [MCD_BASIC_VS_CURRENT_COMPARE.md](MCD_BASIC_VS_CURRENT_COMPARE.md)
 - 캡처 근거(참조 시퀀스): [mcds/](../mcds/) conn 3341(애태치+AM0), conn 4085(MCDS 폴링) — 해설 §8
 - 도구 분석(대응 UI/동작): [MCD_TOOLS_ANALYSIS.md](MCD_TOOLS_ANALYSIS.md)

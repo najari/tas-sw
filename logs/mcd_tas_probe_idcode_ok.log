@@ -1,0 +1,51 @@
+[rw] rq cnt 65473 frame_items 1: 01 B0 FF 00 C1 FF 00 80 00 11 0F 00 00 15 0C 00 00 25 00 01 00 B1 01 00
+[rw] rsp 16 bytes: 00 B0 87 08 01 25 01 80 80 1A 06 00 00 B1 C1 FF
+[rw] rq cnt 65474 frame_items 1: 01 B0 FF 00 C2 FF 00 80 00 11 0F 00 01 2C 00 D0 1A 00 00 00 00 B1 01 00
+[rw] rsp 116 bytes: 00 B0 87 08 1A 2C 1A 80 83 A0 1D 40 00 00 00 00 54 72 69 43 6F 72 65 2D 46 61 6D 69 6C 79 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 B1 C2 FF
+[rw] rq cnt 65475 frame_items 1: 01 B0 FF 00 C3 FF 00 80 00 11 0F 00 01 2C 00 80 2A 00 00 00 00 B1 01 00
+[rw] rsp 180 bytes: 00 B0 87 08 2A 2C 2A 80 44 41 53 20 4A 54 41 47 20 41 55 52 44 55 49 4E 4F 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 49 6E 66 69 6E 65 6F 6E 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 34 36 59 50 45 41 44 57 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 01 00 00 80 01 00 00 80 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 B1 C3 FF
+[rw] rq cnt 65476 frame_items 1: 01 B0 FF 00 C4 FF 00 80 00 11 0F 00 00 15 DD 00 00 25 00 10 00 B1 01 00
+[rw] rsp 16 bytes: 00 B0 87 08 01 25 01 80 83 A0 1D 40 00 B1 C4 FF
+[rw] rq cnt 65477 frame_items 1: 01 B0 FF 00 C5 FF 00 80 00 11 0F 00 00 15 0A 00 00 27 00 80 00 B1 01 00
+[rw] rsp 20 bytes: 00 B0 87 08 02 27 02 80 00 00 00 00 00 00 00 00 00 B1 C5 FF
+[rw] rq cnt 65478 frame_items 1: 01 B0 FF 00 C6 FF 00 80 00 11 0F 00 00 15 0A 00 00 27 00 18 00 B1 01 00
+[rw] rsp 20 bytes: 00 B0 87 08 02 27 02 80 00 00 00 00 00 00 00 00 00 B1 C6 FF
+[rw] rq cnt 65479 frame_items 1: 01 B0 FF 00 C7 FF 00 80 00 11 0F 00 00 15 DD 00 00 25 80 10 00 B1 01 00
+[rw] rsp 16 bytes: 00 B0 87 08 01 25 01 80 00 00 00 00 00 B1 C7 FF
+[rw] rq cnt 65480 frame_items 6: 01 B0 FF 00 C8 FF 00 80 00 11 0F 00 00 15 0C 00 01 24 00 11 01 00 00 00 01 24 00 18 00 00 00 00 01 24 00 14 20 00 00 00 02 26 00 15 00 00 00 00 00 00 00 00 00 27 00 15 01 24 00 12 00 00 00 00 00 B1 06 00
+[rw] rsp 40 bytes: 00 B0 87 08 00 24 01 80 00 24 01 80 00 24 01 80 00 26 02 80 02 27 02 80 83 A0 1D 40 00 00 00 00 00 24 01 80 00 B1 C8 FF
+[rw] rq cnt 65481 frame_items 1: 01 B0 FF 00 C9 FF 00 80 00 11 0F 00 00 15 0C 00 01 24 00 12 00 00 00 00 00 B1 01 00
+[rw] rsp 12 bytes: 00 B0 87 08 00 24 01 80 00 B1 C9 FF
+[rw] rq cnt 65482 frame_items 1: 01 B0 FF 00 CA FF 00 80 00 11 0F 00 00 15 DD 00 00 25 00 10 00 B1 01 00
+[rw] rsp 16 bytes: 00 B0 87 08 01 25 01 80 83 A0 1D 40 00 B1 CA FF
+== mcd_tas protocol probe (read-only) ==
+server: localhost:24817
+
+  [ok]   SERVER_CONNECT: 'TasServer' ver 0.2 protos 0x00000002 date 'Apr 30 2026'
+  [ok]   GET_TARGETS: 1 target(s)
+           [0] 'DAS JTAG AURDUINO 46YPEADW' devtype 0x401DA083 phys 1 nclient 0
+  [ok]   SESSION_START 'DAS JTAG AURDUINO 46YPEADW'
+           max pl2 rq 1060 rsp 1040, devtype 0x401DA083, max_rw 32,
+           rw_mode_mask 0x0000 addr_map_mask 0x8001, hash LBHJYL (0x4013A2AA),
+           identifier 'DAS JTAG AURDUINO 46YPEADW'
+           device_id: 47427060 11080040 64945FCB 20E65C06
+  [ok]   PING (devtype 0x401DA083)
+  [ok]   AM15 RD32 @0x000C0100 (ACC_HW_FREQUENCY)
+           value = 400000 Hz
+  [ok]   AM15 RDBLK @0xD000 (104 bytes)
+           block devtype = 0x401DA083, 'TriCore-Family' present: yes
+  [ok]   AM15 RDBLK @0x8000 (168 bytes)
+           content: DAS JTAG AURDUINO...............................................Infineon...........
+  [info] AM15 RD32 @0x00DD1000 (DEVICE_TYPE_ACC_HW) = 0x401DA083
+  [info] AM15 RD64 @0x000A8000 (USERPINS) value 0x00000000 mask 0x00000000
+  [info] AM15 RD64 @0x000A1800 (RESET_COUNT) porst 0 reset 0
+  [info] AM15 RD32 @0x00DD1080 (DEVICE_TYPE_SET) = 0x00000000
+
+  [scan] native JTAG scan: enable, TAP reset, capture 32, shift, read, disable
+           trans rc 0 pl0 0x00
+           item ok/err: en 1/0x80  rst 1/0x80  cap 1/0x80  wr 1/0x80  rd 1/0x80  dis 1/0x80
+  [scan] IDCODE = 0x401DA083   <- MATCH: JTAG link ALIVE (TC27x)
+  [scan] scan-mode disable re-assert: ok (rc 0 pl0 0x00)
+  [scan] post-scan DEVICE_TYPE_ACC_HW = 0x401DA083
+
+== PROBE OK (0 failure(s)) ==

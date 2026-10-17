@@ -1,0 +1,22 @@
+# (발췌) mcd_basic_client.exe + mcd_tas.dll(drop-in, mcdxdas.dll 자리) — M3 GUI 세션 로그
+# 출처: C:\work\mcd_tas\drop_in\client_stderr8.log (MCD_TAS_LOG=1, 약 18.5k줄 중 핵심만)
+# 일자: 2026-10-18, PID 23576
+
+[애태치 — Core Select 'Select' 클릭 직후]
+mcd_tas: open_core request: acc_hw='DAS JTAG AURDUINO 46YPEADW' core='Core 0: CPU0 TriCore 1.6E' host='localhost' port=24817
+mcd_tas: open_core: no server open, auto-open localhost:24817
+mcd_tas: session attached to 'DAS JTAG AURDUINO 46YPEADW' (device 0x401DA083, feat 0x0000, max_rw 32)
+mcd_tas: core 0 of 'DAS JTAG AURDUINO 46YPEADW' opened (device 'TC27x' type 0x401DA083)
+
+[GUI Read #1 — Address=0x70000000, Bytes=4 → Value 박스 0x00000000]
+[rw] rq cnt 5065 frame_items 1: 01 B0 FF 00 C9 13 01 00 00 15 00 70 00 25 00 00 00 B1 01 00
+[rw] rsp 16 bytes: 00 B0 88 08 01 25 01 80 00 00 00 00 00 B1 C9 13
+
+[GUI Read #2 — Address=0xF0000480, Bytes=4 → Value 박스 0x00080001 (M2 스모크·정상 시절 시그니처)]
+[rw] rq cnt 5618 frame_items 1: 01 B0 FF 00 F2 15 01 00 00 15 00 F0 00 25 80 04 00 B1 01 00
+[rw] rsp 16 bytes: 00 B0 88 08 01 25 01 80 01 00 08 00 00 B1 F2 15
+
+[참고 — 클라이언트 자체 폴링: RD16 @0x0(mem space 0) → 0x8D(DATA). State/IP 필드 Unknown/XXXXXXXX의 직접 원인, 앱 동작엔 무영향]
+[rw] rq cnt 5066 frame_items 1: 01 B0 FF 00 CA 13 01 00 00 23 00 00 00 B1 01 00
+[rw] rsp 12 bytes: 00 B0 88 08 00 23 00 8D 00 B1 CA 13
+mcd_tas: FAIL: mcd_execute_txlist_f: tx[0] read failed at 0x0 (PL0 err 0x8d)

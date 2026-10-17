@@ -1,0 +1,38 @@
+== mcd_tas smoke test ==
+dll: mcd_tas.dll
+cfg: (default)
+mode: with core attach (--attach)
+
+all exports resolved
+
+  [ok]   mcd_initialize_f
+       impl: api 1.1 'SPRINT Release', vendor 'mcd_tas prototype', build 0.2.0, date Oct 17 2026
+  [ok]   mcd_qry_servers_f (count)
+       running servers on localhost: 1
+  [ok]   mcd_qry_servers_f (fetch)
+       server[0]: 'TasServer' acc_hw 'DAS JTAG AURDUINO 46YPEADW' system_instance ''
+  [ok]   mcd_open_server_f
+  [ok]   mcd_qry_systems_f
+       system 'Real HW' instance '' host localhost:24817
+  [ok]   mcd_qry_devices_f
+       device[0]: acc_hw 'DAS JTAG AURDUINO 46YPEADW' device 'TC27x' type 0x401DA083 id 0x47427060
+  [ok]   mcd_qry_cores_f
+       core[0]: 'Core 0: CPU0 TriCore 1.6E' core_type 44 core_id 0x00B7C002 (acc_hw 'DAS JTAG AURDUINO 46YPEADW')
+       core[1]: 'Core 1: CPU1 TriCore 1.6E' core_type 44 core_id 0x00B7C002 (acc_hw 'DAS JTAG AURDUINO 46YPEADW')
+       core[2]: 'Core 2: CPU2 TriCore 1.6E' core_type 44 core_id 0x00B7C002 (acc_hw 'DAS JTAG AURDUINO 46YPEADW')
+  NOTE: --attach performs TAS DEVICE_CONNECT (JTAG hot attach, no reset/halt)
+  [ok]   mcd_open_core_f (session + attach)
+  [ok]   mcd_qry_mem_spaces_f
+       mem space id 1 'AM0' type 0x10 range 0x0..0xFFFFFFFF
+       after attach: device 'TC27x' type 0x401DA083 id 0x47427060
+  [ok]   mcd_execute_txlist_f (2 read transactions)
+       rd32  @0xF0000480 -> 01 00 08 00
+       rd16B @0xF0000480 -> 01 00 08 00 00 00 00 00 88 04 00 F0 68 F0 10 00
+  [ok]   mcd_qry_state_f
+       state 0x0 (unknown) info 'state query not implemented yet (mcd_tas prototype)'
+  [ok]   mcd_close_core_f
+  [ok]   stub mcd_run_f returns HANDLE_ERROR
+       stub error 0x00000100: mcd_run_f: not implemented by mcd_tas prototype
+  [ok]   mcd_close_server_f
+
+== SMOKE OK (0 failure(s)) ==
