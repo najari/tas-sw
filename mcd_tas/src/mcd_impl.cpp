@@ -2116,12 +2116,24 @@ mcd_return_et mcd_qry_rst_classes_f(const mcd_core_st *core,
         r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
                     "mcd_qry_rst_classes_f: NULL rst_class_vector");
     } else {
-        *rst_class_vector = 1u << 0;
+        /* M10 calibration: the reference mcdxdas.dll advertises three
+         * reset classes (0 Power-On, 1 System, 2 Application) - observed
+         * via the forwarding proxy. */
+        *rst_class_vector = 0x7u;
         r = MCD_RET_ACT_NONE;
     }
     mcd_unlock();
     return r;
 }
+
+/* M10: reference reset class descriptions (per class bit). */
+static const struct {
+    const char *info;
+} g_rst_class_info[] = {
+    { "Power-On Reset (with PORST pin)" },   /* bit 0 */
+    { "System Reset" },                      /* bit 1 */
+    { "Application Reset" },                 /* bit 2 */
+};
 
 mcd_return_et mcd_qry_rst_class_info_f(const mcd_core_st *core,
                                        uint8_t rst_class,
@@ -2136,15 +2148,16 @@ mcd_return_et mcd_qry_rst_class_info_f(const mcd_core_st *core,
     if (rst_info == NULL) {
         r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
                     "mcd_qry_rst_class_info_f: NULL rst_info");
-    } else if (rst_class != 0) {
+    } else if (rst_class >=
+               (uint8_t)(sizeof(g_rst_class_info) / sizeof(g_rst_class_info[0]))) {
         r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
                     "mcd_qry_rst_class_info_f: reset class %u does not exist",
                     (unsigned)rst_class);
     } else {
         memset(rst_info, 0, sizeof(*rst_info));
-        rst_info->class_vector = 1u << 0;
+        rst_info->class_vector = 1u << rst_class;
         copy_str(rst_info->info_str, sizeof(rst_info->info_str),
-                 "System Reset");
+                 g_rst_class_info[rst_class].info);
         r = MCD_RET_ACT_NONE;
     }
     mcd_unlock();

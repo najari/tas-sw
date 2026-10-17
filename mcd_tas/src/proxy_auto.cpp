@@ -361,18 +361,6 @@ extern "C" MCD_SHARED_LIBRARY_API mcd_return_et mcd_step_f(const mcd_core_st *co
     return r;
 }
 
-typedef mcd_return_et (*pf_mcd_qry_rst_classes_f)(const mcd_core_st *core, uint32_t *rst_class_vector);
-extern "C" MCD_SHARED_LIBRARY_API mcd_return_et mcd_qry_rst_classes_f(const mcd_core_st *core, uint32_t *rst_class_vector)
-{
-    static pf_mcd_qry_rst_classes_f pf = 0;
-    if (!pf) pf = (pf_mcd_qry_rst_classes_f)proxy_orig_proc("mcd_qry_rst_classes_f");
-    if (!pf) { proxy_log("FATAL: mcd_qry_rst_classes_f missing in orig"); return MCD_RET_ACT_HANDLE_ERROR; }
-    proxy_log("+ mcd_qry_rst_classes_f");
-    mcd_return_et r = pf(core, rst_class_vector);
-    proxy_log("- mcd_qry_rst_classes_f -> %d", (int)r);
-    return r;
-}
-
 typedef mcd_return_et (*pf_mcd_qry_rst_class_info_f)(const mcd_core_st *core, uint8_t rst_class, mcd_rst_info_st *rst_info);
 extern "C" MCD_SHARED_LIBRARY_API mcd_return_et mcd_qry_rst_class_info_f(const mcd_core_st *core, uint8_t rst_class, mcd_rst_info_st *rst_info)
 {

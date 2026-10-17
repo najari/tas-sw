@@ -480,6 +480,50 @@ mcd_return_et mcd_qry_reg_map_f(const mcd_core_st *core, uint32_t reg_group_id,
 }
 
 /* ------------------------------------------------------------------ */
+/* mcd_qry_rst_classes_f                                               */
+/* ------------------------------------------------------------------ */
+typedef mcd_return_et (*fn_qry_rst_classes_t)(const mcd_core_st *,
+                                              uint32_t *);
+
+extern "C" MCD_SHARED_LIBRARY_API
+mcd_return_et mcd_qry_rst_classes_f(const mcd_core_st *core,
+                                    uint32_t *rst_class_vector)
+{
+    static fn_qry_rst_classes_t pf = 0;
+    if (!pf)
+        pf = (fn_qry_rst_classes_t)proxy_orig_proc("mcd_qry_rst_classes_f");
+
+    mcd_return_et r = pf(core, rst_class_vector);
+    proxy_log("- qry_rst_classes -> %d vector=0x%08X", (int)r,
+              rst_class_vector ? (unsigned)*rst_class_vector : 0u);
+
+    /* one-shot probe: details of every advertised reset class */
+    static int probed = 0;
+    if (r == 0 && !probed && rst_class_vector && *rst_class_vector) {
+        typedef mcd_return_et (*fn_info_t)(const mcd_core_st *, uint8_t,
+                                           mcd_rst_info_st *);
+        fn_info_t ipf =
+            (fn_info_t)proxy_orig_proc("mcd_qry_rst_class_info_f");
+        probed = 1;
+        if (ipf) {
+            uint32_t b;
+            for (b = 0; b < 32; b++) {
+                if (*rst_class_vector & (1u << b)) {
+                    mcd_rst_info_st ri;
+                    memset(&ri, 0, sizeof(ri));
+                    mcd_return_et r2 = ipf(core, (uint8_t)b, &ri);
+                    proxy_log("    rst_info[%u]: rc=%d class_vector=0x%08X "
+                              "info='%s'",
+                              (unsigned)b, (int)r2,
+                              (unsigned)ri.class_vector, ri.info_str);
+                }
+            }
+        }
+    }
+    return r;
+}
+
+/* ------------------------------------------------------------------ */
 /* mcd_qry_trig_set_state_f                                            */
 /* ------------------------------------------------------------------ */
 typedef mcd_return_et (*fn_qry_trig_set_state_t)(const mcd_core_st *,

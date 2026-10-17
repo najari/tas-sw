@@ -29,6 +29,8 @@ typedef mcd_return_et (*pfn_open_core)(const mcd_core_con_info_st *, mcd_core_st
 typedef mcd_return_et (*pfn_close_core)(const mcd_core_st *);
 typedef mcd_return_et (*pfn_qry_mem_spaces)(const mcd_core_st *, uint32_t, uint32_t *, mcd_memspace_st *);
 typedef mcd_return_et (*pfn_qry_mem_blocks)(const mcd_core_st *, uint32_t, uint32_t, uint32_t *, mcd_memblock_st *);
+typedef mcd_return_et (*pfn_qry_rst_classes)(const mcd_core_st *, uint32_t *);
+typedef mcd_return_et (*pfn_qry_rst_class_info)(const mcd_core_st *, uint8_t, mcd_rst_info_st *);
 typedef mcd_return_et (*pfn_execute_txlist)(const mcd_core_st *, mcd_txlist_st *);
 typedef mcd_return_et (*pfn_qry_state)(const mcd_core_st *, mcd_core_state_st *);
 
@@ -80,6 +82,8 @@ int main(int argc, char **argv)
     LOADFN(h, pfn_close_core,   f_closecore,  "mcd_close_core_f");
     LOADFN(h, pfn_qry_mem_spaces, f_memspaces, "mcd_qry_mem_spaces_f");
     LOADFN(h, pfn_qry_mem_blocks, f_memblocks, "mcd_qry_mem_blocks_f");
+    LOADFN(h, pfn_qry_rst_classes, f_rstclasses, "mcd_qry_rst_classes_f");
+    LOADFN(h, pfn_qry_rst_class_info, f_rstclassinfo, "mcd_qry_rst_class_info_f");
     LOADFN(h, pfn_execute_txlist, f_txlist,   "mcd_execute_txlist_f");
     LOADFN(h, pfn_qry_state,    f_state,      "mcd_qry_state_f");
     printf("all exports resolved\n\n");
@@ -215,6 +219,25 @@ int main(int argc, char **argv)
                     f_err(NULL, &ei);
                     printf("       mem blocks rc %d: code 0x%08x '%s'\n",
                            (int)r, (unsigned)ei.error_code, ei.error_str);
+                }
+
+                /* reset classes (reference advertises class 0..2) */
+                {
+                    uint32_t vec = 0, b;
+                    r = f_rstclasses(core, &vec);
+                    CHK(r == MCD_RET_ACT_NONE, "mcd_qry_rst_classes_f");
+                    printf("       rst class vector 0x%08X\n", (unsigned)vec);
+                    for (b = 0; b < 8; b++) {
+                        if (vec & (1u << b)) {
+                            mcd_rst_info_st ri;
+                            memset(&ri, 0, sizeof(ri));
+                            r = f_rstclassinfo(core, (uint8_t)b, &ri);
+                            if (r == MCD_RET_ACT_NONE)
+                                printf("       rst_info[%u]: class_vector 0x%08X '%s'\n",
+                                       (unsigned)b,
+                                       (unsigned)ri.class_vector, ri.info_str);
+                        }
+                    }
                 }
 
                 /* enumeration should now show the identified device */
