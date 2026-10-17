@@ -1,0 +1,31 @@
+== original mcdxdas.dll - GUI write test on LMU 0x90000000 (via forwarding proxy) ==
+-- access 1:
+       tx[0] PRE: at=1 opts=0x0 space=0 addr=0x90000000 bytes=4 width=0 mode=0 data=000000DB5E79ED50
+   - execute_txlist -> 0
+       num_tx_ok(post)=1
+       tx[0] POST: num_bytes_ok=4 data=[00 00 00 00 ]
+   - qry_state -> 0: state=3 event=0x0 hw_thread=0 trig=0 stop='' info=''
+-- access 2:
+       tx[0] PRE: at=2 opts=0x0 space=0 addr=0x90000000 bytes=4 width=118 mode=0 data=00007FF65274BCCC
+   - execute_txlist -> 0
+       num_tx_ok(post)=1
+       tx[0] POST: num_bytes_ok=4 data=[5A A5 5A 3C ]
+   - qry_state -> 0: state=3 event=0x0 hw_thread=0 trig=0 stop='' info=''
+-- access 3:
+       tx[0] PRE: at=1 opts=0x0 space=0 addr=0x90000000 bytes=4 width=0 mode=0 data=000000DB5E79ED50
+   - execute_txlist -> 0
+       num_tx_ok(post)=1
+       tx[0] POST: num_bytes_ok=4 data=[5A A5 5A 3C ]
+   - qry_state -> 0: state=3 event=0x0 hw_thread=0 trig=0 stop='' info=''
+-- access 4:
+       tx[0] PRE: at=2 opts=0x0 space=0 addr=0x90000000 bytes=4 width=118 mode=0 data=00007FF65274BCCC
+   - execute_txlist -> 0
+       num_tx_ok(post)=1
+       tx[0] POST: num_bytes_ok=4 data=[00 00 00 00 ]
+   - qry_state -> 0: state=3 event=0x0 hw_thread=0 trig=0 stop='' info=''
+-- access 5:
+       tx[0] PRE: at=1 opts=0x0 space=0 addr=0x90000000 bytes=4 width=0 mode=0 data=000000DB5E79ED50
+   - execute_txlist -> 0
+       num_tx_ok(post)=1
+       tx[0] POST: num_bytes_ok=4 data=[00 00 00 00 ]
+   - qry_state -> 0: state=3 event=0x0 hw_thread=0 trig=0 stop='' info=''

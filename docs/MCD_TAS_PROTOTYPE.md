@@ -24,6 +24,7 @@ TasServer(24817) 백엔드로** 구동하는 프로토타입 DLL(`mcd_tas.dll`)�
 | M9 | 열거(system/device/core) 교차 캘리브레이션 | **완료·검증(§3-L)** — 코어별 `1.6E/1.6P`·core_id(0x00B7C002/0x00C0C012)·devid 0 · Core Select 정상 시절 일치 |
 | M10 | 리셋 클래스(rst_classes) 교차 캘리브레이션 | **완료·검증(§3-M)** — 벡터 `0x7` + 3개 클래스 문구 · 클라이언트 호출 함수 기준 교차 완료 |
 | M11 | Run(HALT=00b) 실관찰 캘리브레이션 (승인 하 원본 GUI Run/Stop) | **완료·검증(§3-N)** — 실행 중 `state=1`/IP 진행 · 정지 복귀 · DBGSR RUNNING 경로 실증 |
+| M12 | GUI Write 검증 (승인 하 타깃 메모리 쓰기) — LMU 스크래치 셀 쓰기/Read-back/원값 복원 + 원본 파리티 | **완료·검증(§3-O)** — `PL0_OK` · read-back 일치 · 최종 원값 복원 · 실패 모달 재규명(M6 정정) |
 
 ## 1. 구현 범위
 
@@ -190,6 +191,8 @@ DBGSR(`0xF881FD00`)을 1회 RD32(읽기 전용)로 읽어 해독·캐시(세션 
   모달·박스 표시가 나타나지 않음(우리와 동일) — "원본 모달 vs 우리 무표시" 차이는 현재
   환경에서 재현 불가. 정상 시절 와이어(`RD32 @0x0000`→`00 25 00 8D`, s2c cnt 0x014B)와
   우리 응답도 동일. 정상 시절 `crop_13` 모달의 트리거는 미상(참고 관찰).
+  **[정정 — M12(§3-O)]**: 실패 모달은 양 스택 공통으로 표시·차단됨 — 캡처에 미표시 +
+  실패 후 상호작용 미시도로 인한 오판이었다(모달은 Escape로 닫히고 폴링 재개).
 - 성공 Read 회귀(로그 실증, `client_stderr17.log`): 요청 `B32:F000|R32:0480`(정상 시절과 동일
   와이어 형태) → 응답 `01 00 08 00`(0x00080001) — GUI 표시 확인.
 - 증거: [m6_dropin/](../m6_dropin/) (proxy_log_excerpt.txt · wire_compare.txt · ours/orig screenshots)
@@ -263,6 +266,19 @@ trig_set_state 덤프)으로 원본 `mcdxdas.dll`의 레지스터 DB를 전량 �
 - 증거: [m11_dropin/](../m11_dropin/) (proxy_run_stop.txt · our_state_log_excerpt.txt · 화면 7종)
 - 상세: `M11_RUN_STATE_CALIBRATION.md` (tas_server_analysis, 로컬)
 
+### O. M12 — GUI Write 검증 (승인 하 타깃 메모리 쓰기) (2026-10-18)
+
+- 스크래치 셀(LMU `0x90000000`, 기준값 0) 절차 검증: 기준 Read 0 → 패턴 Write → Read-back 일치 →
+  **원값(0) 복원** → 최종 Read 0. **최종 상태 = 초기값, 타깃 정지 유지.**
+- 우리 DLL: `0xA5C35A3C` Write → ack `00 24 01 80`(`PL0_OK`) → Read-back `3C 5A C3 A5` 일치 ·
+  원본(프록시): `0x3C5AA55A` Write → `-> 0`·`num_tx_ok=1` → Read-back `[5A A5 5A 3C]` 일치.
+  양쪽 `width=118`(클라이언트가 쓰기에 채우는 비정상 값) 동일 — 파리티.
+- **부수 발견(M6 정정)**: 실패 Read 직후 클라이언트는 **모달**로 UI·폴링을 블록(양 스택 공통) —
+  이 환경에서 캡처에 렌더링되지 않아 종전에 "재현 불가"로 오판. **Escape 1회로 닫힘·폴링 재개**,
+  모달 없이 Escape는 앱 종료, 이벤트 후 창 ID 재조회 필요(자동화 프로토콜).
+- 증거: [m12_dropin/](../m12_dropin/) (our/orig write_test · 화면 5종 · modal_notes.txt)
+- 상세: `M12_GUI_WRITE_VERIFICATION.md` (tas_server_analysis, 로컬)
+
 ## 4. 구현 메모 (정본 근거)
 
 - **프레임 빌더** (`tas_pkt_handler_rw.cpp` 규칙, §8 실측과 일치):
@@ -297,7 +313,9 @@ trig_set_state 덤프)으로 원본 `mcdxdas.dll`의 레지스터 DB를 전량 �
   함수 기준 교차 캘리브레이션 전 항목 완료.**
 - **M11(완료, 2026-10-18)**: Run 실관찰(§3-N) — 실행 중 `State: Running`/IP 진행·정지 복귀,
   DBGSR RUNNING 경로 실증.
-- **다음(M11+)**: (승인 후) GUI Write 검증 — 마지막 남은 캘리브레이션 항목.
+- **M12(완료, 2026-10-18)**: GUI Write 검증(§3-O) — LMU 스크래치 셀 쓰기/Read-back/원값 복원 +
+  원본 파리티 · 실패 모달 재규명(M6 정정). **캘리브레이션·검증 항목 전부 완료.**
+- **다음**: 새 요구사항에 한함.
 
 ## 부록. 산출물
 
@@ -313,6 +331,7 @@ trig_set_state 덤프)으로 원본 `mcdxdas.dll`의 레지스터 DB를 전량 �
 - M9 열거 교차 캘리브레이션 캡처·발췌: [m9_dropin/](../m9_dropin/) (proxy_enum_dump.txt · smoke_run.txt · select/main/read_regression)
 - M10 리셋 클래스 교차 캘리브레이션 캡처·발췌: [m10_dropin/](../m10_dropin/) (proxy_rst_dump.txt · smoke_run.txt · m10_main.png)
 - M11 Run 실관찰 캘리브레이션 캡처·발췌: [m11_dropin/](../m11_dropin/) (proxy_run_stop.txt · our_state_log_excerpt.txt · 화면 7종)
+- M12 GUI Write 검증 캡처·발췌: [m12_dropin/](../m12_dropin/) (our/orig write_test · 화면 5종 · modal_notes.txt)
 - 정상 시절 vs 현재 대조(§5 = M3 재검증): [MCD_BASIC_VS_CURRENT_COMPARE.md](MCD_BASIC_VS_CURRENT_COMPARE.md)
 - 캡처 근거(참조 시퀀스): [mcds/](../mcds/) conn 3341(애태치+AM0), conn 4085(MCDS 폴링) — 해설 §8
 - 도구 분석(대응 UI/동작): [MCD_TOOLS_ANALYSIS.md](MCD_TOOLS_ANALYSIS.md)

@@ -1,0 +1,16 @@
+== our mcd_tas.dll - GUI write test on LMU 0x90000000 (client_stderr26.log) ==
+mcd_tas: tx[0] R space=0 addr=0x90000000 bytes=4 width=0
+    [rw] rq cnt 72 frame_items 1: 01 B0 FF 00 48 00 01 00 00 15 00 90 00 25 00 00 00 B1 01 00
+    [rw] rsp 16 bytes: 00 B0 93 08 01 25 01 80 00 00 00 00 00 B1 48 00
+mcd_tas: tx[0] W space=0 addr=0x90000000 bytes=4 width=118
+    [rw] rq cnt 231 frame_items 1: 01 B0 FF 00 E7 00 01 00 00 15 00 90 01 24 00 00 3C 5A C3 A5 00 B1 01 00
+    mcd_tas: note: access width 118 at tx[0] is not a valid power of two; treating as 'does not matter'
+mcd_tas: tx[0] R space=0 addr=0x90000000 bytes=4 width=0
+    [rw] rq cnt 379 frame_items 1: 01 B0 FF 00 7B 01 01 00 00 15 00 90 00 25 00 00 00 B1 01 00
+    [rw] rsp 16 bytes: 00 B0 93 08 01 25 01 80 3C 5A C3 A5 00 B1 7B 01
+mcd_tas: tx[0] W space=0 addr=0x90000000 bytes=4 width=118
+    [rw] rq cnt 556 frame_items 1: 01 B0 FF 00 2C 02 01 00 00 15 00 90 01 24 00 00 00 00 00 00 00 B1 01 00
+    [rw] rsp 12 bytes: 00 B0 93 08 00 24 01 80 00 B1 2C 02
+mcd_tas: tx[0] R space=0 addr=0x90000000 bytes=4 width=0
+    [rw] rq cnt 615 frame_items 1: 01 B0 FF 00 67 02 01 00 00 15 00 90 00 25 00 00 00 B1 01 00
+    [rw] rsp 16 bytes: 00 B0 93 08 01 25 01 80 00 00 00 00 00 B1 67 02

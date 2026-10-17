@@ -4,12 +4,11 @@ MCD(Multi-Core Debug) API v1.1 **"SPRINT Release"** 구현 DLL 프로토타입.
 백엔드는 [TAS](https://github.com/najari/tas-sw) 서버(TCP 24817) — 즉, `mcdxdas.dll`(DAS 백엔드)의
 자매품으로 "MCD API를 TAS로" 제공하는 실험 구현입니다.
 
-- 상태: **M11 완료 (2026-10-18)** — 원본 `mcd_basic_client.exe`에 drop-in(`mcdxdas.dll` 자리)으로
-  **GUI 전 구간 검증**: Select→애태치, Core Info, GUI Read(`0x70000000`, `0xF0000480=0x00080001`),
-  **`State: Debug` / `IP: 0xA0000020`**, `qry_state` DBGSR 실상태(M5),
-  오류 표시 캘리브레이션(M6), reg_map 40개(M7), mem_spaces/스텁 문구(M8), 열거 교차(M9),
-  리셋 클래스 교차(M10), **Run 실관찰(M11 — 실행 중 `State: Running`/IP 진행, 정지 복귀)** —
-  아래 "M3~M11 검증" 참조. (M2 애태치: 초기 DEVICE_CONNECT 실패는 USB 허브 경유 문제 — 본체 직결로 해결)
+- 상태: **M12 완료 (2026-10-18)** — 원본 `mcd_basic_client.exe`에 drop-in(`mcdxdas.dll` 자리)으로
+  **GUI 전 구간 검증 + 교차 캘리브레이션 완료**: 열거·열기(M1~M3), State/IP·DBGSR(M4~M5),
+  오류 표시(M6), reg_map(M7), mem_spaces/스텁(M8), 열거 교차(M9), 리셋 클래스(M10),
+  Run 실관찰(M11), **GUI Write 검증(M12 — LMU 스크래치 셀 쓰기/복원·원본 파리티)** —
+  아래 "M3~M12 검증" 참조. (M2 애태치: 초기 DEVICE_CONNECT 실패는 USB 허브 경유 문제 — 본체 직결로 해결)
 - 원칙: **읽기 전용** — 타깃 상태 변경(Run/Stop/Step/Reset)은 의도적으로 미구현(스텁)
 - 소스 언어: C++ (SPRINT `mcd_api.h` 헤더가 `extern "C"` 비가드 선언이라 C에서는 컴파일 불가)
 
@@ -224,6 +223,8 @@ build\Release\tas_probe.exe [host] [port]
 - **재검토**: 원본 DLL 직접(프록시 없이) 실행·주소 기본값 `0`/`0xE00000` 재현에서도
   모달·박스 표시가 없음(우리와 동일) — "원본 모달 vs 우리 무표시" 차이는 현재 환경에서 재현 불가.
   정상 시절 와이어(`RD32 @0x0000`→`00 25 00 8D`, cnt 0x014B)와 우리 응답도 동일.
+  **[정정(M12)]**: 실패 모달은 양 스택 공통으로 표시·차단됨(캡처 미표시 + 상호작용 미시도로 오판) —
+  M12 참조.
 - 성공 Read 회귀(로그 실증, `client_stderr17.log`): 요청 `B32:F000|R32:0480`(정상 시절 동일 형태)
   → 응답 `01 00 08 00`(0x00080001) — GUI 표시 확인(`m6v_success_final.png`).
 - 결론: **(ret, err) 조합 변경 불필요**(이미 정확); 캘리브레이션은 error string 정합으로 완료.
@@ -297,6 +298,18 @@ build\Release\tas_probe.exe [host] [port]
 - 코드 변경 없음(M5 매핑 검증만). 상세 기록: `C:\work\tas_server_analysis\M11_RUN_STATE_CALIBRATION.md`
   (화면/발췌: `gui_test/m11_*.png`).
 
+### M12 검증 (2026-10-18) — GUI Write 검증 (승인 하 타깃 메모리 쓰기)
+
+- 스크래치 셀(LMU `0x90000000`, 기준값 0)에서 절차 검증: 기준 Read 0 → 패턴 Write →
+  Read-back 일치 → **원값(0) 복원** → 최종 Read 0. **최종 상태 = 초기값, 타깃 정지 유지.**
+- 우리 DLL: Write `0xA5C35A3C` → ack `00 24 01 80`(PL0_OK) → Read-back `3C 5A C3 A5` 일치.
+  원본(프록시): Write `0x3C5AA55A` → `-> 0`, `num_tx_ok=1` → Read-back `[5A A5 5A 3C]` 일치.
+  양쪽 `width=118`(클라이언트가 채우는 비정상 값) 동일 — 파리티.
+- **부수(M6 정정)**: 실패 Read 직후 모달이 UI·폴링을 블록(양 스택 공통) — 캡처에 안 보임,
+  **Escape 1회로 닫힘·폴링 재개**, Escape(모달 없을 때)는 앱 종료, 창 ID는 재조회 필요.
+- 상세 기록: `C:\work\tas_server_analysis\M12_GUI_WRITE_VERIFICATION.md`
+  (화면/발췌: `gui_test/m12_*.png`, `m12_dropin/modal_notes.txt`).
+
 ## 알려진 한계 (M2)
 
 - ~~`mcd_open_core_f`의 성공 경로 미실측~~ → **해결(2026-10-18)**: 실패 원인은 환경(USB 허브 경유) —
@@ -342,7 +355,10 @@ build\Release\tas_probe.exe [host] [port]
   (승인 후) Write 및 타깃 제어.
 - **M11 (완료, 2026-10-18)**: Run 실관찰 캘리브레이션 (`M11_RUN_STATE_CALIBRATION.md`) —
   승인 하 원본 GUI Run/Stop으로 실행 중 `State: Running`/IP 진행·정지 복귀 실증,
-  DBGSR RUNNING 경로(M5 미실측) 해소. 잔여: **(승인 후) GUI Write 검증** 만 남음.
+  DBGSR RUNNING 경로(M5 미실측) 해소.
+- **M12 (완료, 2026-10-18)**: GUI Write 검증 (`M12_GUI_WRITE_VERIFICATION.md`) —
+  LMU 스크래치 셀 쓰기·Read-back·원값 복원 + 원본 파리티, 실패 모달 재규명(M6 정정).
+  **캘리브레이션·검증 항목 전부 완료** — 추가 작업은 새 요구사항에 한함.
 - 참고 문서: `C:\work\tas_server_analysis\`(TAS 프로토콜 캡처·분석), `tas-sw` 저장소 문서
 
 ## 라이선스
