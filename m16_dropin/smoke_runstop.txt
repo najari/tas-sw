@@ -1,0 +1,44 @@
+mcd_tas: initialized (client requested 1.1 'SPRINT Release')
+mcd_tas: qry_servers(localhost): 1 server 'TasServer' acc_hw 'DAS JTAG AURDUINO 46YPEADW'
+mcd_tas: server 'TasServer' opened at localhost:24817 (1 targets)
+mcd_tas: open_core request: acc_hw='DAS JTAG AURDUINO 46YPEADW' core='Core 0: CPU0 TriCore 1.6E' host='localhost' port=24817
+[rw] rq cnt 65473 frame_items 1: 01 B0 FF 00 C1 FF 00 80 00 11 0F 00 01 2C 00 D0 1A 00 00 00 00 B1 01 00
+[rw] rsp 116 bytes: 00 B0 90 08 1A 2C 1A 80 83 A0 1D 40 00 00 00 00 54 72 69 43 6F 72 65 2D 46 61 6D 69 6C 79 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 B1 C1 FF
+[rw] rq cnt 65474 frame_items 1: 01 B0 FF 00 C2 FF 00 80 00 11 0F 00 01 2C 00 00 18 00 00 00 00 B1 01 00
+[rw] rsp 108 bytes: 00 B0 90 08 18 2C 18 80 55 44 41 53 20 4A 44 53 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 49 6E 66 69 6E 65 6F 6E 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 01 01 00 00 00 00 00 00 41 70 72 20 33 30 20 32 30 32 36 00 00 00 00 00 00 00 00 00 00 00 00 00 00 B1 C2 FF
+[rw] rq cnt 65475 frame_items 1: 01 B0 FF 00 C3 FF 00 80 00 11 0F 00 01 2C 00 80 2A 00 00 00 00 B1 01 00
+[rw] rsp 180 bytes: 00 B0 90 08 2A 2C 2A 80 44 41 53 20 4A 54 41 47 20 41 55 52 44 55 49 4E 4F 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 49 6E 66 69 6E 65 6F 6E 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 34 36 59 50 45 41 44 57 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 01 00 00 80 01 00 00 80 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 B1 C3 FF
+mcd_tas: session attached to 'DAS JTAG AURDUINO 46YPEADW' (device 0x401DA083, feat 0x0000, max_rw 32)
+mcd_tas: core 0 of 'DAS JTAG AURDUINO 46YPEADW' opened (device 'TC27x' type 0x401DA083)
+mcd_tas: CALL qry_mem_spaces start=0
+mcd_tas: CALL qry_mem_blocks space=0 start=0 (reference: unimplemented)
+mcd_tas: FAIL: Function is not implemented
+mcd_tas: CALL qry_error_info ('Function is not implemented')
+mcd_tas: tx[0] R space=1 addr=0xF0000480 bytes=4 width=4
+mcd_tas: tx[1] R space=1 addr=0xF0000480 bytes=16 width=0
+[rw] rq cnt 65476 frame_items 3: 01 B0 FF 00 C4 FF 01 00 00 15 00 F0 00 25 80 04 00 27 80 04 00 27 88 04 00 B1 03 00
+[rw] rsp 40 bytes: 00 B0 90 08 01 25 01 80 01 00 08 00 02 27 02 80 01 00 08 00 00 00 00 00 02 27 02 80 88 04 00 F0 68 F0 10 00 00 B1 C4 FF
+[rw] rq cnt 65477 frame_items 1: 01 B0 FF 00 C5 FF 01 00 00 15 81 F8 00 25 00 FD 00 B1 01 00
+[rw] rsp 16 bytes: 00 B0 90 08 01 25 01 80 03 00 00 00 00 B1 C5 FF
+mcd_tas: qry_state: DBGSR @0xF881FD00 = 0x00000003 (DE=1 HALT[2:1]=1 SIH=0 SUSP=0 PEVT=0 EVTSRC=0) -> DEBUG (cached for session)
+mcd_tas: CALL qry_state -> DEBUG (dbgsr 0x00000003)
+mcd_tas: CALL qry_state -> DEBUG (dbgsr 0x00000003)
+[rw] rq cnt 65478 frame_items 1: 01 B0 FF 00 C6 FF 01 00 00 15 81 F8 01 24 00 FD 04 00 00 00 00 B1 01 00
+[rw] rsp 12 bytes: 00 B0 90 08 00 24 01 80 00 B1 C6 FF
+mcd_tas: mcd_run_f: DBGSR <- 0x00000004 -> RUNNING (core 0)
+mcd_tas: tx[0] R space=1 addr=0xF881FD00 bytes=4 width=4
+[rw] rq cnt 65479 frame_items 1: 01 B0 FF 00 C7 FF 01 00 00 15 81 F8 00 25 00 FD 00 B1 01 00
+[rw] rsp 16 bytes: 00 B0 90 08 01 25 01 80 01 00 00 00 00 B1 C7 FF
+mcd_tas: CALL qry_state -> RUNNING (dbgsr 0x00001001)
+[rw] rq cnt 65480 frame_items 1: 01 B0 FF 00 C8 FF 01 00 00 15 81 F8 01 24 00 FD 06 00 00 00 00 B1 01 00
+[rw] rsp 12 bytes: 00 B0 90 08 00 24 01 80 00 B1 C8 FF
+mcd_tas: mcd_stop_f: DBGSR <- 0x00000006 -> DEBUG (core 0)
+mcd_tas: tx[0] R space=1 addr=0xF881FD00 bytes=4 width=4
+[rw] rq cnt 65481 frame_items 1: 01 B0 FF 00 C9 FF 01 00 00 15 81 F8 00 25 00 FD 00 B1 01 00
+[rw] rsp 16 bytes: 00 B0 90 08 01 25 01 80 03 00 00 00 00 B1 C9 FF
+mcd_tas: CALL qry_state -> DEBUG (dbgsr 0x00001003)
+mcd_tas: CALL qry_state -> DEBUG (dbgsr 0x00001003)
+mcd_tas: core 0 of 'DAS JTAG AURDUINO 46YPEADW' closed
+mcd_tas: FAIL: mcd_run_f: unknown core handle
+mcd_tas: CALL qry_error_info ('mcd_run_f: unknown core handle')
+mcd_tas: server closed

@@ -1,0 +1,5 @@
+[rw] rq cnt 342 frame_items 1: 01 B0 FF 00 56 01 01 00 00 15 81 F8 00 25 08 FE 00 B1 01 00
+[rw] rsp 16 bytes: 00 B0 93 08 01 25 01 80 64 A2 03 80 00 B1 56 01
+mcd_tas: STUB mcd_remove_trig_set_f
+mcd_tas: FAIL: Function is not implemented
+mcd_tas: CALL qry_error_info ('Function is not implemented')

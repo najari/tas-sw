@@ -3,10 +3,11 @@
 `mcdxdas.dll`(DAS 백엔드)과 **동일한 MCD API v1.1 "SPRINT Release" 계약(54개 함수)을
 TasServer(24817) 백엔드로** 구동하는 프로토타입 DLL(`mcd_tas.dll`)의 구현 범위와 실서버 검증 결과.
 
-- 구현 소스(C++)는 별도 로컬 작업 트리에서 관리 — 본 저장소에는 **결과 문서·검증 로그만** 포함(저장소 원칙).
+- 구현 소스(C++)는 `mcd_tas/`(본 저장소 포함, M6부터 공개) — 검증 로그·증거는 마일스톤 폴더(`mNN_dropin/`).
 - 프로토콜 근거: ① 본 저장소 캡처 해독 [TAS_PROTOCOL_CAPTURE.md](TAS_PROTOCOL_CAPTURE.md) §8
   ② 공식 `tas_client_api` 소스(`tas_pkt.h`, `tas_pkt_handler_rw.cpp`, `tas_client_server_con.cpp`) — 양쪽 상호 일치 확인.
-- 원칙: **읽기 전용** — 타깃 실행 제어(Run/Stop/Step/Reset)는 의도적으로 미구현(스텁).
+- 원칙: **읽기 전용 기본** — Run/Stop은 M16에서 실구현(사용 승인 하 상태 변경·검증 완료);
+  Step/Reset/트리거 생성/CHL은 미구현(스텁).
 
 ## 0. 상태 요약
 
@@ -25,10 +26,11 @@ TasServer(24817) 백엔드로** 구동하는 프로토타입 DLL(`mcd_tas.dll`)�
 | M10 | 리셋 클래스(rst_classes) 교차 캘리브레이션 | **완료·검증(§3-M)** — 벡터 `0x7` + 3개 클래스 문구 · 클라이언트 호출 함수 기준 교차 완료 |
 | M11 | Run(HALT=00b) 실관찰 캘리브레이션 (승인 하 원본 GUI Run/Stop) | **완료·검증(§3-N)** — 실행 중 `state=1`/IP 진행 · 정지 복귀 · DBGSR RUNNING 경로 실증 |
 | M12 | GUI Write 검증 (승인 하 타깃 메모리 쓰기) — LMU 스크래치 셀 쓰기/Read-back/원값 복원 + 원본 파리티 | **완료·검증(§3-O)** — `PL0_OK` · read-back 일치 · 최종 원값 복원 · 실패 모달 재규명(M6 정정) |
+| M16 | run/stop 실구현 — DBGSR 쓰기(run=0x4/stop=0x6)·내부 상태 모델·1회성 STOPPED 이벤트 + trig_set 성공 no-op | **완료·검증(§3-P)** — smoke 라이브(DBGSR 독립 재판독) + 원본 클라이언트 GUI Run/Stop 전 구간 |
 
 ## 1. 구현 범위
 
-54개 함수 중 **18개 구현 + 36개 스텁**(미구현은 `MCD_ERR_FN_UNIMPLEMENTED` + 함수명 메시지, `mcd_qry_error_info_f`로 조회).
+54개 함수 중 **실동작 23개 + 정직 고정응답 13개 + 성공 no-op 2개 + 스텁 16개**(미구현은 `MCD_ERR_FN_UNIMPLEMENTED` + 함수명 메시지, `mcd_qry_error_info_f`로 조회) — M16 기준.
 
 - **M1 (11)**: `mcd_initialize_f` `mcd_exit_f` `mcd_qry_servers_f` `mcd_open_server_f` `mcd_close_server_f`
   `mcd_set_server_config_f` `mcd_qry_server_config_f` `mcd_qry_systems_f` `mcd_qry_devices_f`
@@ -36,6 +38,8 @@ TasServer(24817) 백엔드로** 구동하는 프로토타입 DLL(`mcd_tas.dll`)�
 - **M2 (6)**: `mcd_open_core_f` `mcd_close_core_f` `mcd_qry_mem_spaces_f` `mcd_execute_txlist_f`
   `mcd_qry_state_f` `mcd_qry_max_payload_size_f`
 - **M4 (1)**: `mcd_qry_reg_map_f` (group 0/1 → 단일 `PC` 레지스터; `mcd_qry_reg_groups_f`도 'CPU' 그룹·1레지스터로 보강)
+- **M16 (2+2)**: `mcd_run_f` `mcd_stop_f` 실구현(DBGSR 쓰기) · `mcd_activate_trig_set_f`
+  `mcd_remove_trig_set_f` 성공 no-op (트리거 세트는 항상 비어 있음 — 원본 클라이언트 Run 시퀀스 대응, §3-P)
 
 ### 1.1 M2 동작 요약
 
@@ -279,6 +283,24 @@ trig_set_state 덤프)으로 원본 `mcdxdas.dll`의 레지스터 DB를 전량 �
 - 증거: [m12_dropin/](../m12_dropin/) (our/orig write_test · 화면 5종 · modal_notes.txt)
 - 상세: `M12_GUI_WRITE_VERIFICATION.md` (tas_server_analysis, 로컬)
 
+### P. M16 — run/stop 실구현 + GUI Run/Stop 검증 (2026-10-18)
+
+- **메커니즘**: DBGSR(`0xF881FD00`) 쓰기 — run=`0x00000004`(HALT[2:1]=10b, 해제) ·
+  stop=`0x00000006`(HALT[2:1]=11b, 설정·DE=1) (TC1.6 UM Vol.1 §12.9;
+  run 값은 CCL recorder `startCpu`의 `mcdsrl_write(DBGSR, 0x0004)`와 동일)
+- **상태 모델**: 원본 파리티 — DBGSR 재판독 없이 내부 추적(run→RUNNING · stop→DEBUG +
+  **1회성 `event=0x10`(STOPPED)**)
+- **smoke 라이브 검증**(`--attach --runstop`): run→`DBGSR=0x00000001` · stop→`DBGSR=0x00000003`
+  **독립 재판독 확인** · 상태/이벤트 시퀀스 전 항목 ok · **입력 상태 복원** · 실패 0
+  → [m16_dropin/smoke_runstop.txt](../m16_dropin/smoke_runstop.txt)
+- **GUI 검증**(원본 `mcd_basic_client.exe` + 우리 DLL): 클라이언트 Run 시퀀스 실측 =
+  `remove_trig_set` → `activate_trig_set` → `run` — 스텁이던 trig_set 2종을 **성공 no-op**으로 구현 후
+  전 구간 동작: Stop(Running→Debug·IP 고정) · Run(Debug→Running·IP 진행) · 최종 Debug 복원
+  → [m16_dropin/](../m16_dropin/) (화면 4종 · 로그 발췌)
+- 관찰: 상태 전환 직후 첫 폴링에 1회성 읽기 실패(PL0 0x8D→0x98) 표시 가능 —
+  M6 원본 캘리브레이션과 동일 표시·자동 복구
+- 참고: EVTSRC 차이(원본 stop=TR0EVT `0x10xx` vs DBGSR 쓰기=EXEVT `0x000x`) — 상태 판정과 무관
+
 ## 4. 구현 메모 (정본 근거)
 
 - **프레임 빌더** (`tas_pkt_handler_rw.cpp` 규칙, §8 실측과 일치):
@@ -318,6 +340,8 @@ trig_set_state 덤프)으로 원본 `mcdxdas.dll`의 레지스터 DB를 전량 �
 - **M13(확인, 2026-10-18)**: MCDS Trace Viewer는 `mcdxdas.dll`을 로드하지 않음(자체 TAS 클라이언트 +
   `mcds_recorder.dll`) — DLL 드롭인과 무관. 상세: [MCD_TOOLS_ANALYSIS.md](MCD_TOOLS_ANALYSIS.md) §3.8
   · [m13_dropin/](../m13_dropin/).
+- **M16(완료, 2026-10-18)**: run/stop 실구현(§3-P) — DBGSR 쓰기·1회성 STOPPED 이벤트·trig_set no-op,
+  smoke + GUI 전 구간 검증. **미구현 유지**: `rst`(미드세션 리셋 캘리브레이션 필요)·`step`·`run_until`.
 - **다음**: 새 요구사항에 한함.
 
 ## 부록. 산출물
