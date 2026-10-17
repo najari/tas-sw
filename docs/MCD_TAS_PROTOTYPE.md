@@ -17,6 +17,7 @@ TasServer(24817) 백엔드로** 구동하는 프로토타입 DLL(`mcd_tas.dll`)�
 | M3 | 원본 `mcd_basic_client.exe` drop-in(`mcdxdas.dll` 자리) GUI 구동 | **GUI 검증 완료(§3-E)** — Select/애태치/Core Info/Read |
 | M4 | State/IP 실값 복구 (`qry_reg_map` PC 레지스터 + `qry_state` 캘리브레이션) | **완료·검증(§3-F)** — `State: Debug / IP: 0xA0000020` (정상 시절 파리티) |
 | (참고) | TC27x 디버그 레지스터 규명 — PC `0xF881FE08`·DBGSR `0xF881FD00` (해독·라이브 검증) | 완료(§3-G) — [TC27X_DEBUG_REGISTERS.md](TC27X_DEBUG_REGISTERS.md) |
+| M5 | `qry_state` 실상태 — DBGSR 기반 도출 (세션 1회 판독·캐시) | **완료·검증(§3-H)** — `State: Debug` 파리티 · 4.6 Hz · 실패 0 |
 
 ## 1. 구현 범위
 
@@ -151,6 +152,21 @@ TC27x D-Step UM(+TC1.6 코어 매뉴얼)으로 규명하고, 드롭인 GUI Read(
 - 전체 해독·출처: **[TC27X_DEBUG_REGISTERS.md](TC27X_DEBUG_REGISTERS.md)** ·
   화면: [tc27x_dbg_regs/](../tc27x_dbg_regs/)
 
+### H. M5 — `qry_state` 실상태 (DBGSR 기반) (2026-10-18)
+
+`mcd_qry_state_f`를 DEBUG 고정에서 **타깃 실상태 도출**로 교체 — 첫 호출 시
+DBGSR(`0xF881FD00`)을 1회 RD32(읽기 전용)로 읽어 해독·캐시(세션 단위).
+트래픽 정합: **세션당 1회 판독**(정상 시절 캡처와 동일), 이후 사이클은 캐시 반환.
+
+- 매핑: `HALT[2:1]`=01b→`MCD_CORE_STATE_DEBUG` / 00b→`RUNNING` / 그 외(쓰기 코드)→`UNKNOWN`;
+  `EVTSRC`(16..23)→`trig_id`·`stop_str`("Trigger n (TRnEVT)"), 0/1/2→EXEVT/CREVT/SWEVT;
+  `info_str`=DBGSR 값.
+- 실패 시: DEBUG 폴백(로그 1회)+다음 호출 재시도 — 클라이언트 UI 갱신 경로 보존.
+- 검증(`client_stderr13.log`, PID 30980): 판독 1건 `0x0000101B → DEBUG (cached)`, 누적 525회 호출 무실패,
+  `State: Debug`/`IP: 0xA0000020` 파리티, 폴링 **4.6 Hz**, GUI Read `0xF0000480→0x00080001` 회귀 유지.
+- 증거: [m5_dropin/](../m5_dropin/) (state_main · read_regression · log_excerpt.txt)
+- 한계: 타깃 정지 상태(HALT=01b)라 RUNNING 경로 미실측 — 실관찰 캘리브레이션은 별도 승인 필요.
+
 ## 4. 구현 메모 (정본 근거)
 
 - **프레임 빌더** (`tas_pkt_handler_rw.cpp` 규칙, §8 실측과 일치):
@@ -168,12 +184,12 @@ TC27x D-Step UM(+TC1.6 코어 매뉴얼)으로 규명하고, 드롭인 GUI Read(
 - ~~**DC 성공 경로 미실측** — 어댑터 정상화 후 `--attach` 재실행 (성공 시 `device_type=0x401DA083`,
   `addr_map_mask` `0x8000→0x8001` 전환 기대).~~ → **해결(§3-D)**: USB 허브→본체 직결로 복구 —
   애태치 성공, `device_type=0x401DA083`·`addr_map_mask=0x8001` 확인.
-- `mcd_qry_state_f`=DEBUG 고정(캘리브레이션 — 실상태 Run/Halt 도출은 후속; DBGSR 해독 완료 §3-G),
+- `mcd_qry_state_f`=DBGSR 기반 실상태(§3-H 완료) — Run 실관찰 캘리브레이션만 후속,
   메모리 공간 1개(AM0), 캐시/가상 공간·메모리 블록 미노출.
 - 트랜잭션 리스트 중단 시 이미 전송된 프레임은 취소 불가(서버가 전량 실행) — 집계만 중단 시점 기준.
 - 트리거/채널/트레이스/레지스터/리셋 등은 스텁. 단일 전역 임계구역 직렬화(재진입 없음).
-- **다음(M4+)**: `mcd_qry_state_f` 실상태 — **DBGSR(`0xF881FD00`) 기반 구현 가능**(해독 완료, §3-G;
-  Run/Halt 실관찰 캘리브레이션은 승인 필요), 매핑 캘리브레이션, (승인 후) Write 검증,
+- **M5(완료, 2026-10-18)**: `qry_state` 실상태(§3-H) — DBGSR 세션 1회 판독·캐시, HALT→DEBUG/RUNNING.
+- **다음(M5+)**: Run 실관찰 캘리브레이션(승인 필요), 매핑 캘리브레이션, (승인 후) Write 검증,
   reg groups/trig 확장, 오류 반환 조합 캘리브레이션(실패 표시 방식).
 
 ## 부록. 산출물
@@ -183,6 +199,7 @@ TC27x D-Step UM(+TC1.6 코어 매뉴얼)으로 규명하고, 드롭인 GUI Read(
 - M3 GUI 캡처·발췌: [m3_dropin/](../m3_dropin/) (select · main_after_attach · coreinfo · read_70000000 · read_f0000480 · log_excerpt.txt)
 - M4 State/IP 복구 캡처·발췌: [m4_dropin/](../m4_dropin/) (state_ip_recovered · read_regression · log_excerpt.txt)
 - M4+ 디버그 레지스터 검증 캡처·발췌: [tc27x_dbg_regs/](../tc27x_dbg_regs/) (dbgsr_read · pc_read · cpuid_read · log_excerpt.txt)
+- M5 실상태 검증 캡처·발췌: [m5_dropin/](../m5_dropin/) (state_main · read_regression · log_excerpt.txt)
 - 정상 시절 vs 현재 대조(§5 = M3 재검증): [MCD_BASIC_VS_CURRENT_COMPARE.md](MCD_BASIC_VS_CURRENT_COMPARE.md)
 - 캡처 근거(참조 시퀀스): [mcds/](../mcds/) conn 3341(애태치+AM0), conn 4085(MCDS 폴링) — 해설 §8
 - 도구 분석(대응 UI/동작): [MCD_TOOLS_ANALYSIS.md](MCD_TOOLS_ANALYSIS.md)

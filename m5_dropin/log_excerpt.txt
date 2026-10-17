@@ -1,0 +1,22 @@
+# (발췌) M5 qry_state 실상태 검증 - client_stderr13.log (2026-10-18, client PID 30980)
+# mcd_basic_client.exe + mcd_tas.dll (mcdxdas.dll 자리) - DBGSR(0xF881FD00) 기반 qry_state
+
+# --- DBGSR 초기 판독 (세션당 1회, 읽기 전용) ---
+mcd_tas: qry_state: DBGSR @0xF881FD00 = 0x0000101B (DE=1 HALT[2:1]=1 SIH=1 SUSP=1 PEVT=0 EVTSRC=16) -> DEBUG (cached for session)
+
+# --- 정상 폴링 사이클 예 (CALL qry_state -> PC RD32) ---
+mcd_tas: CALL qry_state -> DEBUG (dbgsr 0x0000101B)
+mcd_tas: tx[0] R space=1 addr=0xF881FE08 bytes=4 width=0
+[rw] rq cnt 242 frame_items 1: 01 B0 FF 00 F2 00 01 00 00 15 81 F8 00 25 08 FE 00 B1 01 00
+[rw] rsp 16 bytes: 00 B0 88 08 01 25 01 80 20 00 00 A0 00 B1 F2 00
+mcd_tas: CALL qry_state -> DEBUG (dbgsr 0x0000101B)
+
+# --- 통계 ---
+# qry_state 호출 누적: 525
+# DBGSR 판독: 1 건 (기대 1)
+# 실패/오류 라인: 0 건 (기대 0)
+# 폴백 라인: 0 건 (기대 0)
+# 폴링 속도: 4.6 Hz (10초 실측: qry_state 46회)
+# GUI Read 회귀: 0xF0000480 -> 0x00080001 (m5_state_read_regression.png)
+
+# 화면: m5_state_main.png (State: Debug / IP: 0xA0000020) / m5_state_select.png / m5_state_read_regression.png
