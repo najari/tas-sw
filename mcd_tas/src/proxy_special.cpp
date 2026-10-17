@@ -242,6 +242,134 @@ mcd_return_et mcd_qry_reg_map_f(const mcd_core_st *core, uint32_t reg_group_id,
                 }
             }
         }
+        /* memory spaces + memory blocks probe */
+        {
+            typedef mcd_return_et (*fn_ms_t)(const mcd_core_st *, uint32_t,
+                                             uint32_t *, mcd_memspace_st *);
+            typedef mcd_return_et (*fn_mb_t)(const mcd_core_st *, uint32_t,
+                                             uint32_t, uint32_t *,
+                                             mcd_memblock_st *);
+            fn_ms_t mspf = (fn_ms_t)proxy_orig_proc("mcd_qry_mem_spaces_f");
+            fn_mb_t mbpf = (fn_mb_t)proxy_orig_proc("mcd_qry_mem_blocks_f");
+            static mcd_memspace_st sbuf[8];
+            memset(sbuf, 0, sizeof(sbuf));
+            if (mspf) {
+                uint32_t cap = 8;
+                mcd_return_et r5 = mspf(core, 0, &cap, sbuf);
+                proxy_log("[FULL DUMP] qry_mem_spaces cap=8 -> %d num=%u",
+                          (int)r5, (unsigned)cap);
+                for (i = 0; i < cap && i < 8; i++) {
+                    proxy_log("    space[%u]: id=%u name='%s' type=0x%X mau=%u "
+                              "inv=%u endian=%d min=0x%llX max=0x%llX blocks=%u "
+                              "opts=0x%X rmask=0x%X wmask=0x%X",
+                              i, (unsigned)sbuf[i].mem_space_id,
+                              sbuf[i].mem_space_name,
+                              (unsigned)sbuf[i].mem_type,
+                              (unsigned)sbuf[i].bits_per_mau,
+                              (unsigned)sbuf[i].invariance,
+                              (int)sbuf[i].endian,
+                              (unsigned long long)sbuf[i].min_addr,
+                              (unsigned long long)sbuf[i].max_addr,
+                              (unsigned)sbuf[i].num_mem_blocks,
+                              (unsigned)sbuf[i].supported_access_options,
+                              (unsigned)sbuf[i].core_mode_mask_read,
+                              (unsigned)sbuf[i].core_mode_mask_write);
+                }
+                if (cap == 0) {
+                    uint32_t n0 = 0;
+                    mcd_return_et r5b = mspf(core, 0, &n0, NULL);
+                    proxy_log("[FULL DUMP] qry_mem_spaces cap=0 -> %d num=%u",
+                              (int)r5b, (unsigned)n0);
+                }
+                if (mbpf) {
+                    typedef void (*fn_qry_err2_t)(const mcd_core_st *,
+                                                  mcd_error_info_st *);
+                    fn_qry_err2_t epf =
+                        (fn_qry_err2_t)proxy_orig_proc("mcd_qry_error_info_f");
+                    static mcd_memblock_st bbuf[16];
+                    uint32_t s;
+                    for (s = 0; s < cap && s < 4; s++) {
+                        uint32_t n0 = 0, cap1 = 1, capb = 16;
+                        mcd_memblock_st one;
+                        mcd_error_info_st ei;
+                        memset(&one, 0, sizeof(one));
+                        memset(&ei, 0, sizeof(ei));
+
+                        /* (a) count query: cap=0 + NULL */
+                        mcd_return_et rb0 =
+                            mbpf(core, sbuf[s].mem_space_id, 0, &n0, NULL);
+                        proxy_log("[FULL DUMP] qry_mem_blocks space=%u cap=0 "
+                                  "-> %d num=%u",
+                                  (unsigned)sbuf[s].mem_space_id, (int)rb0,
+                                  (unsigned)n0);
+                        if (rb0 != 0 && epf) {
+                            epf(core, &ei);
+                            proxy_log("    err_info: code=0x%X str='%s'",
+                                      (unsigned)ei.error_code, ei.error_str);
+                        }
+
+                        /* (b) single fetch: cap=1 */
+                        mcd_return_et rb1 = mbpf(core, sbuf[s].mem_space_id, 0,
+                                                 &cap1, &one);
+                        proxy_log("[FULL DUMP] qry_mem_blocks space=%u cap=1 "
+                                  "-> %d num=%u",
+                                  (unsigned)sbuf[s].mem_space_id, (int)rb1,
+                                  (unsigned)cap1);
+                        if (rb1 == 0 && cap1 > 0) {
+                            proxy_log("    block[0]: id=%u name='%s' children=%d "
+                                      "parent=%u start=0x%llX end=0x%llX endian=%d "
+                                      "au={%u,%u,%u,%u} opts=0x%X rmask=0x%X wmask=0x%X",
+                                      (unsigned)one.mem_block_id,
+                                      one.mem_block_name,
+                                      (int)one.has_children,
+                                      (unsigned)one.parent_id,
+                                      (unsigned long long)one.start_addr,
+                                      (unsigned long long)one.end_addr,
+                                      (int)one.endian,
+                                      (unsigned)one.supported_au_sizes[0],
+                                      (unsigned)one.supported_au_sizes[1],
+                                      (unsigned)one.supported_au_sizes[2],
+                                      (unsigned)one.supported_au_sizes[3],
+                                      (unsigned)one.supported_access_options,
+                                      (unsigned)one.core_mode_mask_read,
+                                      (unsigned)one.core_mode_mask_write);
+                        } else if (rb1 != 0 && epf) {
+                            epf(core, &ei);
+                            proxy_log("    err_info: code=0x%X str='%s'",
+                                      (unsigned)ei.error_code, ei.error_str);
+                        }
+
+                        /* (c) batched fetch: cap=16 */
+                        memset(bbuf, 0, sizeof(bbuf));
+                        mcd_return_et r7 = mbpf(core, sbuf[s].mem_space_id, 0,
+                                                &capb, bbuf);
+                        proxy_log("[FULL DUMP] qry_mem_blocks space=%u cap=16 "
+                                  "-> %d num=%u",
+                                  (unsigned)sbuf[s].mem_space_id, (int)r7,
+                                  (unsigned)capb);
+                        for (i = 0; i < capb && i < 16; i++) {
+                            proxy_log("    block[%u]: id=%u name='%s' children=%d "
+                                      "parent=%u start=0x%llX end=0x%llX endian=%d "
+                                      "au={%u,%u,%u,%u} opts=0x%X rmask=0x%X wmask=0x%X",
+                                      i, (unsigned)bbuf[i].mem_block_id,
+                                      bbuf[i].mem_block_name,
+                                      (int)bbuf[i].has_children,
+                                      (unsigned)bbuf[i].parent_id,
+                                      (unsigned long long)bbuf[i].start_addr,
+                                      (unsigned long long)bbuf[i].end_addr,
+                                      (int)bbuf[i].endian,
+                                      (unsigned)bbuf[i].supported_au_sizes[0],
+                                      (unsigned)bbuf[i].supported_au_sizes[1],
+                                      (unsigned)bbuf[i].supported_au_sizes[2],
+                                      (unsigned)bbuf[i].supported_au_sizes[3],
+                                      (unsigned)bbuf[i].supported_access_options,
+                                      (unsigned)bbuf[i].core_mode_mask_read,
+                                      (unsigned)bbuf[i].core_mode_mask_write);
+                        }
+                    }
+                }
+            }
+        }
     }
     return r;
 }

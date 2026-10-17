@@ -4,13 +4,13 @@ MCD(Multi-Core Debug) API v1.1 **"SPRINT Release"** 구현 DLL 프로토타입.
 백엔드는 [TAS](https://github.com/najari/tas-sw) 서버(TCP 24817) — 즉, `mcdxdas.dll`(DAS 백엔드)의
 자매품으로 "MCD API를 TAS로" 제공하는 실험 구현입니다.
 
-- 상태: **M7 완료 (2026-10-18)** — 원본 `mcd_basic_client.exe`에 drop-in(`mcdxdas.dll` 자리)으로
+- 상태: **M8 완료 (2026-10-18)** — 원본 `mcd_basic_client.exe`에 drop-in(`mcdxdas.dll` 자리)으로
   **GUI 전 구간 검증**: Select→애태치, Core Info, GUI Read(`0x70000000`, `0xF0000480=0x00080001`),
   **`State: Debug` / `IP: 0xA0000020`**(정상 시절 파리티 — `mcd_qry_reg_map_f`가 PC 레지스터
   `0xF881FE08`을 제공하고 클라이언트가 이를 폴링), `qry_state` DBGSR 실상태(M5),
-  오류 표시 캘리브레이션(M6 — 원본과 (ret, err) 동일 확인, error string 정본 문구 정합),
-  reg_map 전량 교차 캘리브레이션(M7 — 원본 그룹 "CPU Registers" 40개: PCXI/PSW/PC/…/D0–D15/A0–A15) — 아래
-  "M3~M7 검증" 참조. (M2 애태치: 초기 DEVICE_CONNECT 실패는 USB 허브 경유 문제 — 본체 직결로 해결)
+  오류 표시 캘리브레이션(M6), reg_map 전량 교차(M7 — "CPU Registers" 40개),
+  mem_spaces/스텁 정본 문구 정합(M8 — "Code and Data"·미구현 문구) — 아래 "M3~M8 검증" 참조.
+  (M2 애태치: 초기 DEVICE_CONNECT 실패는 USB 허브 경유 문제 — 본체 직결로 해결)
 - 원칙: **읽기 전용** — 타깃 상태 변경(Run/Stop/Step/Reset)은 의도적으로 미구현(스텁)
 - 소스 언어: C++ (SPRINT `mcd_api.h` 헤더가 `extern "C"` 비가드 선언이라 C에서는 컴파일 불가)
 
@@ -251,6 +251,20 @@ build\Release\tas_probe.exe [host] [port]
 - 상세 기록: `C:\work\tas_server_analysis\M7_REG_MAP_CROSS_CALIBRATION.md`
   (화면/발췌: `gui_test/m7_regs_main.png`, `m7_read_regression.png`).
 
+### M8 검증 (2026-10-18) — mem_spaces 교차 + mem_blocks/스텁 정본 문구 정합 (읽기 전용)
+
+- 원본 관찰(프록시 원샷 프로브): mem_spaces = `id=0 "Code and Data"`·`type=0`·mau=8·endian=LITTLE·
+  `0..0xFFFFFFFF`·`opts=0x200`(ATOMIC_WITH_NEXT) / mem_blocks = **미구현**
+  (`HANDLE_ERROR` + `0x100 "Function is not implemented"`).
+- 수정: mem_spaces를 원본 값으로 정합(id 1→0, 이름, type, opts) · mem_blocks를 원본과 동일한
+  미구현 오류로 · **스텁 문구 정본화**("Function is not implemented", 함수명은 `dbg`로 보존) ·
+  txlist space 0 + legacy 1 허용.
+- 검증(smoke `--attach`): `mem space id 0 'Code and Data' ... opts 0x200` ·
+  `mem blocks rc 3: code 0x100 'Function is not implemented'` · **SMOKE OK (0 failures)**.
+  GUI 회귀: `State: Debug`/`IP: 0xA0000020`, Read `0xF0000480 → 0x00080001`.
+- 상세 기록: `C:\work\tas_server_analysis\M8_MEM_SPACES_STUB_PARITY.md`
+  (화면/발췌: `gui_test/m8_main.png`, `m8_read_regression.png`, `smoke_run_m8.txt`).
+
 ## 알려진 한계 (M2)
 
 - ~~`mcd_open_core_f`의 성공 경로 미실측~~ → **해결(2026-10-18)**: 실패 원인은 환경(USB 허브 경유) —
@@ -284,6 +298,9 @@ build\Release\tas_probe.exe [host] [port]
   (`M7_REG_MAP_CROSS_CALIBRATION.md`) — 원본 "CPU Registers" 40개(PCXI/PSW/PC/…/D0–D15/A0–A15)
   전량 재현, 호출 패턴·space=0 폴링·qry_state 필드 정합. 잔여: Run 실관찰(승인 필요)·
   mem_spaces/blocks 교차(선택)·(승인 후) Write 및 타깃 제어.
+- **M8 (완료, 2026-10-18)**: mem_spaces 교차 + mem_blocks/스텁 정본 문구 정합
+  (`M8_MEM_SPACES_STUB_PARITY.md`) — "Code and Data"(id 0)·opts 0x200, mem_blocks 미구현 오류,
+  스텁 문구 "Function is not implemented". 잔여: Run 실관찰(승인 필요)·(승인 후) Write 및 타깃 제어.
 - 참고 문서: `C:\work\tas_server_analysis\`(TAS 프로토콜 캡처·분석), `tas-sw` 저장소 문서
 
 ## 라이선스

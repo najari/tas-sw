@@ -28,6 +28,7 @@ typedef mcd_return_et (*pfn_run)(const mcd_core_st *, mcd_bool_t);
 typedef mcd_return_et (*pfn_open_core)(const mcd_core_con_info_st *, mcd_core_st **);
 typedef mcd_return_et (*pfn_close_core)(const mcd_core_st *);
 typedef mcd_return_et (*pfn_qry_mem_spaces)(const mcd_core_st *, uint32_t, uint32_t *, mcd_memspace_st *);
+typedef mcd_return_et (*pfn_qry_mem_blocks)(const mcd_core_st *, uint32_t, uint32_t, uint32_t *, mcd_memblock_st *);
 typedef mcd_return_et (*pfn_execute_txlist)(const mcd_core_st *, mcd_txlist_st *);
 typedef mcd_return_et (*pfn_qry_state)(const mcd_core_st *, mcd_core_state_st *);
 
@@ -78,6 +79,7 @@ int main(int argc, char **argv)
     LOADFN(h, pfn_open_core,    f_opencore,   "mcd_open_core_f");
     LOADFN(h, pfn_close_core,   f_closecore,  "mcd_close_core_f");
     LOADFN(h, pfn_qry_mem_spaces, f_memspaces, "mcd_qry_mem_spaces_f");
+    LOADFN(h, pfn_qry_mem_blocks, f_memblocks, "mcd_qry_mem_blocks_f");
     LOADFN(h, pfn_execute_txlist, f_txlist,   "mcd_execute_txlist_f");
     LOADFN(h, pfn_qry_state,    f_state,      "mcd_qry_state_f");
     printf("all exports resolved\n\n");
@@ -194,11 +196,25 @@ int main(int argc, char **argv)
                     r = f_memspaces(core, 0, &nm, &sp);
                     CHK(r == MCD_RET_ACT_NONE && nm == 1, "mcd_qry_mem_spaces_f");
                     if (r == MCD_RET_ACT_NONE && nm == 1)
-                        printf("       mem space id %u '%s' type 0x%x range 0x%llX..0x%llX\n",
+                        printf("       mem space id %u '%s' type 0x%x range 0x%llX..0x%llX opts 0x%X\n",
                                (unsigned)sp.mem_space_id, sp.mem_space_name,
                                (unsigned)sp.mem_type,
                                (unsigned long long)sp.min_addr,
-                               (unsigned long long)sp.max_addr);
+                               (unsigned long long)sp.max_addr,
+                               (unsigned)sp.supported_access_options);
+                }
+
+                /* memory blocks (reference reports unimplemented) */
+                {
+                    uint32_t nb = 0;
+                    mcd_error_info_st ei;
+                    memset(&ei, 0, sizeof(ei));
+                    r = f_memblocks(core, 0, 0, &nb, NULL);
+                    CHK(r == MCD_RET_ACT_HANDLE_ERROR,
+                        "mcd_qry_mem_blocks_f returns HANDLE_ERROR (reference: unimplemented)");
+                    f_err(NULL, &ei);
+                    printf("       mem blocks rc %d: code 0x%08x '%s'\n",
+                           (int)r, (unsigned)ei.error_code, ei.error_str);
                 }
 
                 /* enumeration should now show the identified device */

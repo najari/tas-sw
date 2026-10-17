@@ -36,7 +36,7 @@
 #define MCD_TAS_CLIENT_NAME     "mcd_tas (MCD-TAS prototype)"
 #define MCD_TAS_PROBE_NAME      "mcd_tas probe"
 
-#define MCD_TAS_MEM_SPACE_ID    1u      /* single AM0 memory space      */
+#define MCD_TAS_MEM_SPACE_ID    0u      /* M8: reference space id (observed) */
 #define MCD_TAS_REG_GROUP_CPU   0u      /* M7: reference group id (observed) */
 
 /* CPU0 CSFR window (0xF8810000-0xF881FFFF, TC27x UM Table 3-3) register
@@ -985,8 +985,9 @@ static mcd_core_slot_t *core_slot_from(const mcd_core_st *core)
 #define STUB_ENTER(name)                                          \
     mcd_return_et r_;                                             \
     mcd_lock();                                                   \
+    dbg("mcd_tas: STUB " name);                                  \
     r_ = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_FN_UNIMPLEMENTED, \
-                 name ": not implemented by mcd_tas prototype"); \
+                 "Function is not implemented");                  \
     mcd_unlock();                                                 \
     return r_;
 
@@ -1301,20 +1302,21 @@ mcd_return_et mcd_qry_mem_spaces_f(const mcd_core_st *core,
         return r;
     }
 
-    /* The prototype exposes the TriCore default device access path
-     * (TAS address map 0) as a single physical memory space. */
+    /* M8 calibration: mirror the reference mcdxdas.dll - a single memory
+     * space (id 0, "Code and Data") with no type bits set and
+     * MCD_TX_OPT_ATOMIC_WITH_NEXT advertised as supported access option. */
     sp = &mem_spaces[0];
     memset(sp, 0, sizeof(*sp));
     sp->mem_space_id = MCD_TAS_MEM_SPACE_ID;
-    copy_str(sp->mem_space_name, sizeof(sp->mem_space_name), "AM0");
-    sp->mem_type = MCD_MEM_SPACE_IS_PHYSICAL;
+    copy_str(sp->mem_space_name, sizeof(sp->mem_space_name), "Code and Data");
+    sp->mem_type = 0;
     sp->bits_per_mau = 8;
     sp->invariance = 1;
     sp->endian = MCD_ENDIAN_LITTLE;
     sp->min_addr = 0;
     sp->max_addr = 0xFFFFFFFFull;
     sp->num_mem_blocks = 0;
-    sp->supported_access_options = 0;
+    sp->supported_access_options = MCD_TX_OPT_ATOMIC_WITH_NEXT;
     sp->core_mode_mask_read = 0;
     sp->core_mode_mask_write = 0;
     *num_mem_spaces = 1;
@@ -1330,7 +1332,7 @@ mcd_return_et mcd_qry_mem_blocks_f(const mcd_core_st *core,
 {
     mcd_return_et r = MCD_RET_ACT_NONE;
 
-    (void)mem_space_id; (void)start_index; (void)mem_blocks;
+    (void)mem_blocks;
     mcd_lock();
     err_clear();
 
@@ -1341,10 +1343,15 @@ mcd_return_et mcd_qry_mem_blocks_f(const mcd_core_st *core,
         r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
                     "mcd_qry_mem_blocks_f: NULL num_mem_blocks");
     } else {
-        /* No named memory blocks are exposed by the prototype. */
-        dbg("mcd_tas: CALL qry_mem_blocks space=%u start=%u",
+        /* M8 calibration: the reference mcdxdas.dll does not implement
+         * this function on this target - it reports
+         * MCD_ERR_FN_UNIMPLEMENTED ("Function is not implemented",
+         * observed via the forwarding proxy). */
+        dbg("mcd_tas: CALL qry_mem_blocks space=%u start=%u (reference: "
+            "unimplemented)",
             (unsigned)mem_space_id, (unsigned)start_index);
-        *num_mem_blocks = 0;
+        r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_FN_UNIMPLEMENTED,
+                    "Function is not implemented");
     }
     mcd_unlock();
     return r;
@@ -1767,8 +1774,11 @@ mcd_return_et mcd_execute_txlist_f(const mcd_core_st *core,
                         i);
             goto fail;
         }
-        if (tx->addr.mem_space_id != 0 &&
-            tx->addr.mem_space_id != MCD_TAS_MEM_SPACE_ID) {
+        /* Reference registers/polling live in space 0 (M7); accept the
+         * legacy prototype id 1 as well so older client configs keep
+         * working. */
+        if (tx->addr.mem_space_id != MCD_TAS_MEM_SPACE_ID &&
+            tx->addr.mem_space_id != 1u) {
             r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_TXLIST_TX,
                         "mcd_execute_txlist_f: tx[%u] unknown memory space %u",
                         i, (unsigned)tx->addr.mem_space_id);
