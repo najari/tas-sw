@@ -195,14 +195,21 @@ typedef struct {
     uint32_t    device_type;
     const char *device_name;
     int         n_cores;
-    const char *core_name_fmt;   /* two %d: core index, CPU index      */
+    const char *core_name_fmt_cpu0;  /* two %d: core index, CPU index      */
+    const char *core_name_fmt_other; /* two %d: core index, CPU index      */
     uint32_t    core_type;
-    uint32_t    core_id;         /* prov.                              */
+    uint32_t    core_id_cpu0;        /* M9: observed 0x00B7C002 (CPU0)     */
+    uint32_t    core_id_other;       /* M9: observed 0x00C0C012 (CPU1/2)   */
 } mcd_devdb_entry_t;
 
 static const mcd_devdb_entry_t g_devdb[] = {
-    { 0x401DA083u /* prov. */, "TC27x" /* prov. */, 3,
-      "Core %d: CPU%d TriCore 1.6E" /* prov. */, 44u, 0x00B7C002u },
+    /* M9 calibration (original Core Select list + qry_cores dump via the
+     * forwarding proxy): CPU0 is "TriCore 1.6E" with core_id 0x00B7C002;
+     * CPU1/CPU2 are "TriCore 1.6P" with core_id 0x00C0C012. */
+    { 0x401DA083u, "TC27x", 3,
+      "Core %d: CPU%d TriCore 1.6E",
+      "Core %d: CPU%d TriCore 1.6P",
+      44u, 0x00B7C002u, 0x00C0C012u },
 };
 #define MCD_DEVDB_COUNT (sizeof(g_devdb) / sizeof(g_devdb[0]))
 
@@ -342,7 +349,9 @@ static void fill_device_con_info(mcd_core_con_info_st *o, const tas_target *t)
     copy_str(o->acc_hw, sizeof(o->acc_hw), t->identifier);
     o->device_type = t->device_type;
     copy_str(o->device, sizeof(o->device), db ? db->device_name : "Unknown device");
-    o->device_id = t->device_id[0];   /* mapping of the 16B id is provisional */
+    /* M9 calibration: the reference leaves device_id at 0 (it does not
+     * map the TAS 16 byte device id into this field). */
+    o->device_id = 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -683,9 +692,9 @@ mcd_return_et mcd_qry_systems_f(uint32_t start_index, uint32_t *num_systems,
         return r;
     }
 
+    /* M9 calibration: the reference fills only the system name - host and
+     * server_port stay empty in the system entry (observed via proxy). */
     memset(&system_con_info[0], 0, sizeof(system_con_info[0]));
-    copy_str(system_con_info[0].host, sizeof(system_con_info[0].host), g.host);
-    system_con_info[0].server_port = g.port;
     copy_str(system_con_info[0].system, sizeof(system_con_info[0].system), "Real HW");
     *num_systems = 1;
     mcd_unlock();
@@ -810,11 +819,16 @@ mcd_return_et mcd_qry_cores_f(const mcd_core_con_info_st *connection_info,
         mcd_core_con_info_st *o = &core_con_info[i];
         fill_device_con_info(o, t);
         if (db != NULL)
-            snprintf(o->core, sizeof(o->core), db->core_name_fmt, (int)idx, (int)idx);
+            snprintf(o->core, sizeof(o->core),
+                     (idx == 0) ? db->core_name_fmt_cpu0
+                                : db->core_name_fmt_other,
+                     (int)idx, (int)idx);
         else
             snprintf(o->core, sizeof(o->core), "Core %d", (int)idx);
         o->core_type = (db != NULL) ? db->core_type : 44u;
-        o->core_id = (db != NULL) ? db->core_id : 0u;
+        o->core_id = (db != NULL)
+                         ? ((idx == 0) ? db->core_id_cpu0 : db->core_id_other)
+                         : 0u;
     }
     *num_cores = count;
     mcd_unlock();
@@ -1164,9 +1178,12 @@ mcd_return_et mcd_open_core_f(const mcd_core_con_info_st *core_con_info,
     }
     if (db != NULL) {
         snprintf(cs->core_ci.core, sizeof(cs->core_ci.core),
-                 db->core_name_fmt, cidx, cidx);
+                 (cidx == 0) ? db->core_name_fmt_cpu0
+                             : db->core_name_fmt_other,
+                 cidx, cidx);
         cs->core_ci.core_type = db->core_type;
-        cs->core_ci.core_id = db->core_id;
+        cs->core_ci.core_id = (cidx == 0) ? db->core_id_cpu0
+                                          : db->core_id_other;
     } else {
         snprintf(cs->core_ci.core, sizeof(cs->core_ci.core),
                  "Core %d", cidx);

@@ -4,12 +4,12 @@ MCD(Multi-Core Debug) API v1.1 **"SPRINT Release"** 구현 DLL 프로토타입.
 백엔드는 [TAS](https://github.com/najari/tas-sw) 서버(TCP 24817) — 즉, `mcdxdas.dll`(DAS 백엔드)의
 자매품으로 "MCD API를 TAS로" 제공하는 실험 구현입니다.
 
-- 상태: **M8 완료 (2026-10-18)** — 원본 `mcd_basic_client.exe`에 drop-in(`mcdxdas.dll` 자리)으로
+- 상태: **M9 완료 (2026-10-18)** — 원본 `mcd_basic_client.exe`에 drop-in(`mcdxdas.dll` 자리)으로
   **GUI 전 구간 검증**: Select→애태치, Core Info, GUI Read(`0x70000000`, `0xF0000480=0x00080001`),
   **`State: Debug` / `IP: 0xA0000020`**(정상 시절 파리티 — `mcd_qry_reg_map_f`가 PC 레지스터
   `0xF881FE08`을 제공하고 클라이언트가 이를 폴링), `qry_state` DBGSR 실상태(M5),
-  오류 표시 캘리브레이션(M6), reg_map 전량 교차(M7 — "CPU Registers" 40개),
-  mem_spaces/스텁 정본 문구 정합(M8 — "Code and Data"·미구현 문구) — 아래 "M3~M8 검증" 참조.
+  오류 표시 캘리브레이션(M6), reg_map 전량 교차(M7), mem_spaces/스텁 정본 문구(M8),
+  열거 교차(M9 — 코어별 "1.6E/1.6P"·core_id·device_id=0) — 아래 "M3~M9 검증" 참조.
   (M2 애태치: 초기 DEVICE_CONNECT 실패는 USB 허브 경유 문제 — 본체 직결로 해결)
 - 원칙: **읽기 전용** — 타깃 상태 변경(Run/Stop/Step/Reset)은 의도적으로 미구현(스텁)
 - 소스 언어: C++ (SPRINT `mcd_api.h` 헤더가 `extern "C"` 비가드 선언이라 C에서는 컴파일 불가)
@@ -265,6 +265,17 @@ build\Release\tas_probe.exe [host] [port]
 - 상세 기록: `C:\work\tas_server_analysis\M8_MEM_SPACES_STUB_PARITY.md`
   (화면/발췌: `gui_test/m8_main.png`, `m8_read_regression.png`, `smoke_run_m8.txt`).
 
+### M9 검증 (2026-10-18) — 열거(system/device/core) 원본 교차 캘리브레이션 (읽기 전용)
+
+- 프록시 원샷 덤프(qry_systems/devices/cores)로 원본 열거 전량 관찰: 시스템 `Real HW`만 채움,
+  디바이스 `TC27x`·devtype 0x401DA083·**devid 0**·localhost:24817, 코어 3개 —
+  CPU0 `1.6E`/`core_id 0x00B7C002`, CPU1/2 `1.6P`/`core_id 0x00C0C012`(core_type 44 공통).
+- 수정: 코어별 이름·core_id 분리, `device_id`→0, 시스템 엔트리 host/port 공백.
+- 검증: smoke 전 항목 원본 일치(SMOKE OK) · Core Select 행이 정상 시절 crop_09/10과 일치
+  (`m9_select.png`) · `State: Debug`/`IP: 0xA0000020` · Read `0xF0000480→0x00080001`.
+- 상세 기록: `C:\work\tas_server_analysis\M9_ENUMERATION_CROSS_CALIBRATION.md`
+  (화면/발췌: `gui_test/m9_select.png`, `m9_main.png`, `m9_read_regression.png`, `smoke_run_m9.txt`).
+
 ## 알려진 한계 (M2)
 
 - ~~`mcd_open_core_f`의 성공 경로 미실측~~ → **해결(2026-10-18)**: 실패 원인은 환경(USB 허브 경유) —
@@ -301,6 +312,9 @@ build\Release\tas_probe.exe [host] [port]
 - **M8 (완료, 2026-10-18)**: mem_spaces 교차 + mem_blocks/스텁 정본 문구 정합
   (`M8_MEM_SPACES_STUB_PARITY.md`) — "Code and Data"(id 0)·opts 0x200, mem_blocks 미구현 오류,
   스텁 문구 "Function is not implemented". 잔여: Run 실관찰(승인 필요)·(승인 후) Write 및 타깃 제어.
+- **M9 (완료, 2026-10-18)**: 열거(system/device/core) 교차 캘리브레이션
+  (`M9_ENUMERATION_CROSS_CALIBRATION.md`) — 코어별 "1.6E/1.6P"·core_id(0x00B7C002/0x00C0C012)·
+  device_id=0·시스템 엔트리 공백. 잔여: Run 실관찰(승인 필요)·(승인 후) Write 및 타깃 제어.
 - 참고 문서: `C:\work\tas_server_analysis\`(TAS 프로토콜 캡처·분석), `tas-sw` 저장소 문서
 
 ## 라이선스

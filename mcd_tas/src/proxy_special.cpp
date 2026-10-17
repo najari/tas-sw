@@ -7,6 +7,111 @@
 #include <string.h>
 
 /* ------------------------------------------------------------------ */
+/* enumeration dumps (systems / devices / cores) - first fetch only    */
+/* ------------------------------------------------------------------ */
+static void dump_con_info(const char *tag, uint32_t i,
+                          const mcd_core_con_info_st *ci)
+{
+    proxy_log("    %s[%u]: system='%s' instance='%s' acc_hw='%s' device='%s' "
+              "devtype=0x%08X devid=0x%08X core='%s' core_type=%u "
+              "core_id=0x%08X host='%s' port=%u",
+              tag, i, ci->system, ci->system_instance, ci->acc_hw, ci->device,
+              (unsigned)ci->device_type, (unsigned)ci->device_id, ci->core,
+              (unsigned)ci->core_type, (unsigned)ci->core_id,
+              ci->host, (unsigned)ci->server_port);
+}
+
+typedef mcd_return_et (*fn_qry_systems_t)(uint32_t, uint32_t *,
+                                          mcd_core_con_info_st *);
+
+extern "C" MCD_SHARED_LIBRARY_API
+mcd_return_et mcd_qry_systems_f(uint32_t start_index, uint32_t *num_systems,
+                                mcd_core_con_info_st *system_con_info)
+{
+    static fn_qry_systems_t pf = 0;
+    static int dumped = 0;
+    uint32_t cap_in = num_systems ? *num_systems : 0;
+
+    if (!pf)
+        pf = (fn_qry_systems_t)proxy_orig_proc("mcd_qry_systems_f");
+
+    mcd_return_et r = pf(start_index, num_systems, system_con_info);
+    if (!dumped && r == 0 && cap_in > 0 && system_con_info && num_systems &&
+        *num_systems > 0) {
+        uint32_t i, n = *num_systems > 8 ? 8 : *num_systems;
+        dumped = 1;
+        proxy_log("[DUMP] qry_systems start=%u cap=%u -> %d num=%u",
+                  (unsigned)start_index, (unsigned)cap_in, (int)r,
+                  (unsigned)*num_systems);
+        for (i = 0; i < n; i++)
+            dump_con_info("sys", i, &system_con_info[i]);
+    }
+    return r;
+}
+
+typedef mcd_return_et (*fn_qry_devices_t)(const mcd_core_con_info_st *,
+                                          uint32_t, uint32_t *,
+                                          mcd_core_con_info_st *);
+
+extern "C" MCD_SHARED_LIBRARY_API
+mcd_return_et mcd_qry_devices_f(const mcd_core_con_info_st *system_con_info,
+                                uint32_t start_index, uint32_t *num_devices,
+                                mcd_core_con_info_st *device_con_info)
+{
+    static fn_qry_devices_t pf = 0;
+    static int dumped = 0;
+    uint32_t cap_in = num_devices ? *num_devices : 0;
+
+    if (!pf)
+        pf = (fn_qry_devices_t)proxy_orig_proc("mcd_qry_devices_f");
+
+    mcd_return_et r = pf(system_con_info, start_index, num_devices,
+                         device_con_info);
+    if (!dumped && r == 0 && cap_in > 0 && device_con_info && num_devices &&
+        *num_devices > 0) {
+        uint32_t i, n = *num_devices > 8 ? 8 : *num_devices;
+        dumped = 1;
+        proxy_log("[DUMP] qry_devices start=%u cap=%u -> %d num=%u",
+                  (unsigned)start_index, (unsigned)cap_in, (int)r,
+                  (unsigned)*num_devices);
+        for (i = 0; i < n; i++)
+            dump_con_info("dev", i, &device_con_info[i]);
+    }
+    return r;
+}
+
+typedef mcd_return_et (*fn_qry_cores_t)(const mcd_core_con_info_st *,
+                                        uint32_t, uint32_t *,
+                                        mcd_core_con_info_st *);
+
+extern "C" MCD_SHARED_LIBRARY_API
+mcd_return_et mcd_qry_cores_f(const mcd_core_con_info_st *connection_info,
+                              uint32_t start_index, uint32_t *num_cores,
+                              mcd_core_con_info_st *core_con_info)
+{
+    static fn_qry_cores_t pf = 0;
+    static int dumped = 0;
+    uint32_t cap_in = num_cores ? *num_cores : 0;
+
+    if (!pf)
+        pf = (fn_qry_cores_t)proxy_orig_proc("mcd_qry_cores_f");
+
+    mcd_return_et r = pf(connection_info, start_index, num_cores,
+                         core_con_info);
+    if (!dumped && r == 0 && cap_in > 0 && core_con_info && num_cores &&
+        *num_cores > 0) {
+        uint32_t i, n = *num_cores > 8 ? 8 : *num_cores;
+        dumped = 1;
+        proxy_log("[DUMP] qry_cores start=%u cap=%u -> %d num=%u",
+                  (unsigned)start_index, (unsigned)cap_in, (int)r,
+                  (unsigned)*num_cores);
+        for (i = 0; i < n; i++)
+            dump_con_info("core", i, &core_con_info[i]);
+    }
+    return r;
+}
+
+/* ------------------------------------------------------------------ */
 /* mcd_open_core_f                                                     */
 /* ------------------------------------------------------------------ */
 typedef mcd_return_et (*fn_open_core_t)(const mcd_core_con_info_st *,

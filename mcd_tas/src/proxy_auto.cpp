@@ -85,42 +85,6 @@ extern "C" MCD_SHARED_LIBRARY_API mcd_return_et mcd_qry_server_config_f(const mc
     return r;
 }
 
-typedef mcd_return_et (*pf_mcd_qry_systems_f)(uint32_t start_index, uint32_t* num_systems, mcd_core_con_info_st *system_con_info);
-extern "C" MCD_SHARED_LIBRARY_API mcd_return_et mcd_qry_systems_f(uint32_t start_index, uint32_t* num_systems, mcd_core_con_info_st *system_con_info)
-{
-    static pf_mcd_qry_systems_f pf = 0;
-    if (!pf) pf = (pf_mcd_qry_systems_f)proxy_orig_proc("mcd_qry_systems_f");
-    if (!pf) { proxy_log("FATAL: mcd_qry_systems_f missing in orig"); return MCD_RET_ACT_HANDLE_ERROR; }
-    proxy_log("+ mcd_qry_systems_f");
-    mcd_return_et r = pf(start_index, num_systems, system_con_info);
-    proxy_log("- mcd_qry_systems_f -> %d", (int)r);
-    return r;
-}
-
-typedef mcd_return_et (*pf_mcd_qry_devices_f)(const mcd_core_con_info_st *system_con_info, uint32_t start_index, uint32_t *num_devices, mcd_core_con_info_st *device_con_info);
-extern "C" MCD_SHARED_LIBRARY_API mcd_return_et mcd_qry_devices_f(const mcd_core_con_info_st *system_con_info, uint32_t start_index, uint32_t *num_devices, mcd_core_con_info_st *device_con_info)
-{
-    static pf_mcd_qry_devices_f pf = 0;
-    if (!pf) pf = (pf_mcd_qry_devices_f)proxy_orig_proc("mcd_qry_devices_f");
-    if (!pf) { proxy_log("FATAL: mcd_qry_devices_f missing in orig"); return MCD_RET_ACT_HANDLE_ERROR; }
-    proxy_log("+ mcd_qry_devices_f");
-    mcd_return_et r = pf(system_con_info, start_index, num_devices, device_con_info);
-    proxy_log("- mcd_qry_devices_f -> %d", (int)r);
-    return r;
-}
-
-typedef mcd_return_et (*pf_mcd_qry_cores_f)(const mcd_core_con_info_st *connection_info, uint32_t start_index, uint32_t *num_cores, mcd_core_con_info_st *core_con_info);
-extern "C" MCD_SHARED_LIBRARY_API mcd_return_et mcd_qry_cores_f(const mcd_core_con_info_st *connection_info, uint32_t start_index, uint32_t *num_cores, mcd_core_con_info_st *core_con_info)
-{
-    static pf_mcd_qry_cores_f pf = 0;
-    if (!pf) pf = (pf_mcd_qry_cores_f)proxy_orig_proc("mcd_qry_cores_f");
-    if (!pf) { proxy_log("FATAL: mcd_qry_cores_f missing in orig"); return MCD_RET_ACT_HANDLE_ERROR; }
-    proxy_log("+ mcd_qry_cores_f");
-    mcd_return_et r = pf(connection_info, start_index, num_cores, core_con_info);
-    proxy_log("- mcd_qry_cores_f -> %d", (int)r);
-    return r;
-}
-
 typedef mcd_return_et (*pf_mcd_qry_core_modes_f)(const mcd_core_st *core, uint32_t start_index, uint32_t *num_modes, mcd_core_mode_info_st *core_mode_info);
 extern "C" MCD_SHARED_LIBRARY_API mcd_return_et mcd_qry_core_modes_f(const mcd_core_st *core, uint32_t start_index, uint32_t *num_modes, mcd_core_mode_info_st *core_mode_info)
 {
