@@ -1,0 +1,9 @@
+CONN3441 name='Target Select' c2s=3m s2c=3m notes=('', '')
+-- C2S messages --
+[19:08:15.291] #0       60B  SERVER_CONNECT name='Target Select' user='admin' pid=58980
+[19:08:15.292] #1      116B  SESSION_START con_id=0 ctype=1 p8=00000000 p64=0x0 id='DAS JTAG AURDUINO 46YPEADW' sname='' spw=''
+[19:08:15.301] #2       12B  DEVICE_CONNECT con_id=0 opt=0x0000
+-- S2C messages --
+[19:08:15.292] #0      140B  SERVER_CONNECT rsp err=OK server='TasServer' ver=0.2 protos=0x2 chl=0x2 trc=0x8000000c date='Apr 30 2026'
+[19:08:15.301] #1      136B  SESSION_START rsp con_id=0 err=OK vmin=1 vmax=1 ninst=0 maxrq=1060 maxrsp=1040 devtype=0x401da083 devid=0x47427060:0x11080040:0x64945fcb:0x20e65c06 feat=0x0013 phys=0x01 maxrw=32 rwmask=0x0000 addrmap=0x8001 msz=0/0 id='DAS JTAG AURDUINO 46YPEADW' hash=0x4013a2aa/'LBHJYL'
+[19:08:15.303] #2       16B  DEVICE_CONNECT rsp con_id=133 err=OK feat=0x0000 devtype=0x401da083

@@ -1,0 +1,74 @@
+CONN3341 name='MCD API (legacy devices)' c2s=9482m s2c=9482m notes=('', '')
+== c2s signature frequency (first-occurrence order) ==
+  x1      first@0 (19:03:11.192)  SVR('MCD API (legacy devices)')
+          full: SERVER_CONNECT name='MCD API (legacy devices)' user='admin' pid=48160
+  x1      first@1 (19:03:11.196)  GT
+          full: GET_TARGETS start=0 res=0
+  x1      first@2 (19:03:11.219)  SS(id='DAS JTAG AURDUINO 46YPEADW',name='')
+          full: SESSION_START con_id=0 ctype=1 p8=00000000 p64=0x0 id='DAS JTAG AURDUINO 46YPEADW' sname='' spw=''
+  x1      first@3 (19:03:11.231)  CA2(4B)
+          full: PING cmd=0xa2 raw=00a20000
+  x1      first@4 (19:03:11.237)  START(ver=0,mask=0x8000)|MAP15|RDBLK:D000|END(1)
+          full: PL0_START con_id=0xff ver=0 cnt=0xffc1 mask=0x8000; ADDR_MAP=15; RDBLK @0xd000 wlrd=26; PL0_END n_rw=1
+  x3      first@5 (19:03:11.241)  START(ver=0,mask=0x8000)|MAP15|RDBLK:0000|RDBLK:8000|END(2)
+          full: PL0_START con_id=0xff ver=0 cnt=0xffc2 mask=0x8000; ADDR_MAP=15; RDBLK @0x0000 wlrd=24; RDBLK @0x8000 wlrd=42; PL0_END n_rw=2
+  x1      first@7 (19:03:11.249)  CAD(8B)
+          full: SET_DEVICE_KEY cmd=0xad raw=01ad000001000000
+  x1      first@8 (19:03:11.252)  DC(opt=0x0000)
+          full: DEVICE_CONNECT con_id=0 opt=0x0000
+  x1      first@10 (19:03:11.258)  START(ver=0,mask=0x0001)|B32:F000|R32:0480|END(1)
+          full: PL0_START con_id=0xff ver=0 cnt=0xffc5 mask=0x0001; BASE32=0xf000->0xF0000000; RD32 @0x0480; PL0_END n_rw=1
+  x1      first@11 (19:03:11.262)  START(ver=0,mask=0x0001)|B32:F000|R32:0490|END(1)
+          full: PL0_START con_id=0xff ver=0 cnt=0xffc6 mask=0x0001; BASE32=0xf000->0xF0000000; RD32 @0x0490; PL0_END n_rw=1
+  x1      first@12 (19:03:11.265)  START(ver=0,mask=0x0001)|B32:F000|W32:0498|END(1)
+          full: PL0_START con_id=0xff ver=0 cnt=0xffc7 mask=0x0001; BASE32=0xf000->0xF0000000; WR32 @0x0498 data=0x00000002; PL0_END n_rw=1
+  x1      first@13 (19:03:11.269)  START(ver=0,mask=0x0001)|B32:F000|W32:0494|END(1)
+          full: PL0_START con_id=0xff ver=0 cnt=0xffc8 mask=0x0001; BASE32=0xf000->0xF0000000; WR32 @0x0494 data=0x8000003f; PL0_END n_rw=1
+  x1      first@14 (19:03:11.274)  START(ver=0,mask=0x0001)|B32:F000|W32:0420|END(1)
+          full: PL0_START con_id=0xff ver=0 cnt=0xffc9 mask=0x0001; BASE32=0xf000->0xF0000000; WR32 @0x0420 data=0x00000102; PL0_END n_rw=1
+  x3155   first@15 (19:03:11.280)  START(ver=0,mask=0x8000)|MAP15|B32:000C|R32:8200|R32:8200|END(2)
+  x3155   first@16 (19:03:11.284)  START(ver=0,mask=0x8000)|MAP15|B32:000A|W64:8000|END(1)
+  x1      first@17 (19:03:11.287)  START(ver=0,mask=0x0001)|B32:F881|R32:FE08|R32:FD00|END(2)
+          full: PL0_START con_id=0xff ver=0 cnt=0xffcc mask=0x0001; BASE32=0xf881->0xF8810000; RD32 @0xfe08; RD32 @0xfd00; PL0_END n_rw=2
+  x3155   first@18 (19:03:11.291)  START(ver=0,mask=0x0001)|B32:F881|R32:FE08|END(1)
+  x1      first@400 (19:03:39.288)  START(ver=0,mask=0x0001)|R32:0000|END(1)
+          full: PL0_START con_id=0xff ver=0 cnt=0x014b mask=0x0001; RD32 @0x0000; PL0_END n_rw=1
+
+== paired s2c values per c2s signature ==
+  aligned=True (c2s[i] <-> s2c[i])
+  SIG SVR('MCD API (legacy devices)')  (x1) values:
+      x1      SVRrsp
+  SIG GT  (x1) values:
+      x1      GTrsp(n=1)
+  SIG SS(id='DAS JTAG AURDUINO 46YPEADW',name='')  (x1) values:
+      x1      SSrsp(dt=0x401da083)
+  SIG CA2(4B)  (x1) values:
+      x1      RA2(132B)
+  SIG START(ver=0,mask=0x8000)|MAP15|RDBLK:D000|END(1)  (x1) values:
+      x1      START(err=OK)|RDBLK(err=PL0_OK,w=26)|END
+  SIG START(ver=0,mask=0x8000)|MAP15|RDBLK:0000|RDBLK:8000|END(2)  (x3) values:
+      x3      START(err=OK)|RDBLK(err=PL0_OK,w=24)|RDBLK(err=PL0_OK,w=42)|END
+  SIG CAD(8B)  (x1) values:
+      x1      RAD(4B)
+  SIG DC(opt=0x0000)  (x1) values:
+      x1      DCrsp(err=OK)
+  SIG START(ver=0,mask=0x0001)|B32:F000|R32:0480|END(1)  (x1) values:
+      x1      START(err=OK)|R32:0x80001|END
+  SIG START(ver=0,mask=0x0001)|B32:F000|R32:0490|END(1)  (x1) values:
+      x1      START(err=OK)|R32:0x0|END
+  SIG START(ver=0,mask=0x0001)|B32:F000|W32:0498|END(1)  (x1) values:
+      x1      START(err=OK)|W ack(err=PL0_OK)|END
+  SIG START(ver=0,mask=0x0001)|B32:F000|W32:0494|END(1)  (x1) values:
+      x1      START(err=OK)|W ack(err=PL0_OK)|END
+  SIG START(ver=0,mask=0x0001)|B32:F000|W32:0420|END(1)  (x1) values:
+      x1      START(err=OK)|W ack(err=PL0_OK)|END
+  SIG START(ver=0,mask=0x8000)|MAP15|B32:000C|R32:8200|R32:8200|END(2)  (x3155) values:
+      x3155   START(err=OK)|R32:0x400|R32:0x400|END
+  SIG START(ver=0,mask=0x8000)|MAP15|B32:000A|W64:8000|END(1)  (x3155) values:
+      x3155   START(err=OK)|W ack(err=PL0_OK)|END
+  SIG START(ver=0,mask=0x0001)|B32:F881|R32:FE08|R32:FD00|END(2)  (x1) values:
+      x1      START(err=OK)|R32:0xa0000020|R32:0x1013|END
+  SIG START(ver=0,mask=0x0001)|B32:F881|R32:FE08|END(1)  (x3155) values:
+      x3155   START(err=OK)|R32:0xa0000020|END
+  SIG START(ver=0,mask=0x0001)|R32:0000|END(1)  (x1) values:
+      x1      START(err=OK)|R32!PL0_DATA|END

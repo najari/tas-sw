@@ -1,0 +1,21 @@
+CONN3315 name='MCD API (legacy devices)' c2s=9m s2c=9m notes=('', '')
+-- C2S messages --
+[19:03:09.652] #0       60B  SERVER_CONNECT name='MCD API (legacy devices)' user='admin' pid=48160
+[19:03:09.663] #1      116B  SESSION_START con_id=0 ctype=1 p8=00000000 p64=0x0 id='DAS JTAG AURDUINO 46YPEADW' sname='' spw=''
+[19:03:09.684] #2       36B  PL0_START con_id=0xff ver=0 cnt=0xffc1 mask=0x8000; ADDR_MAP=15; RDBLK @0x0000 wlrd=24; RDBLK @0x8000 wlrd=42; PL0_END n_rw=2
+[19:03:09.687] #3        8B  PING cmd=0xa2 raw=00a20000
+[19:03:09.693] #4       28B  PL0_START con_id=0xff ver=0 cnt=0xffc2 mask=0x8000; ADDR_MAP=15; RDBLK @0xd000 wlrd=26; PL0_END n_rw=1
+[19:03:09.697] #5       32B  PL0_START con_id=0xff ver=0 cnt=0xffc3 mask=0x8000; ADDR_MAP=15; BASE32=0xc00b->0xC00B0000; RDBLK @0x0000 wlrd=18; PL0_END n_rw=1
+[19:03:09.700] #6       28B  PL0_START con_id=0xff ver=0 cnt=0xffc4 mask=0x8000; ADDR_MAP=15; BASE32=0x000c->0x000C0000; RD32 @0x0100; PL0_END n_rw=1
+[19:03:09.703] #7       28B  PL0_START con_id=0xff ver=0 cnt=0xffc5 mask=0x8000; ADDR_MAP=15; BASE32=0xc002->0xC0020000; RD32 @0x0000; PL0_END n_rw=1
+[19:03:09.705] #8       36B  PL0_START con_id=0xff ver=0 cnt=0xffc6 mask=0x8000; ADDR_MAP=15; RDBLK @0x0000 wlrd=24; RDBLK @0x8000 wlrd=42; PL0_END n_rw=2
+-- S2C messages --
+[19:03:09.662] #0      140B  SERVER_CONNECT rsp err=OK server='TasServer' ver=0.2 protos=0x2 chl=0x2 trc=0x8000000c date='Apr 30 2026'
+[19:03:09.682] #1      136B  SESSION_START rsp con_id=0 err=OK vmin=1 vmax=1 ninst=0 maxrq=1060 maxrsp=1040 devtype=0x401da083 devid=0x47427060:0x11080040:0x64945fcb:0x20e65c06 feat=0x0013 phys=0x01 maxrw=32 rwmask=0x0000 addrmap=0x8001 msz=0/0 id='DAS JTAG AURDUINO 46YPEADW' hash=0x4013a2aa/'LBHJYL'
+[19:03:09.685] #2      284B  PL0_START rsp con_id=0x81 err=OK; RDBLK rsp wlrd=24 err=PL0_OK words=24 first=0x53414455 0x53444a20 0x00000000 0x00000000; RDBLK rsp wlrd=42 err=PL0_OK words=42 first=0x20534144 0x4741544a 0x52554120 0x4e495544; PL0_END rsp cnt=0xffc1
+[19:03:09.691] #3      136B  PING rsp cmd=0xa2 raw=20a2810801010100240400001004000083a01d406070424740000811cb5f9464065ce6200000000013000120000001800000000000000000444153204a544147204155524455494e4f2034365950454144570000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+[19:03:09.696] #4      120B  PL0_START rsp con_id=0x81 err=OK; RDBLK rsp wlrd=26 err=PL0_OK words=26 first=0x401da083 0x00000000 0x43697254 0x2d65726f; PL0_END rsp cnt=0xffc2
+[19:03:09.698] #5       16B  PL0_START rsp con_id=0x81 err=OK; RDBLK rsp wlrd=0 err=PL0_DATA words=0 first=; PL0_END rsp cnt=0xffc3
+[19:03:09.701] #6       20B  PL0_START rsp con_id=0x81 err=OK; RD32 rsp wlrd=1 err=PL0_OK data=0x61a80; PL0_END rsp cnt=0xffc4
+[19:03:09.704] #7       20B  PL0_START rsp con_id=0x81 err=OK; RD32 rsp wlrd=1 err=PL0_OK data=0x64; PL0_END rsp cnt=0xffc5
+[19:03:09.707] #8      284B  PL0_START rsp con_id=0x81 err=OK; RDBLK rsp wlrd=24 err=PL0_OK words=24 first=0x53414455 0x53444a20 0x00000000 0x00000000; RDBLK rsp wlrd=42 err=PL0_OK words=42 first=0x20534144 0x4741544a 0x52554120 0x4e495544; PL0_END rsp cnt=0xffc6

@@ -1,0 +1,12 @@
+CONN3342 name='Target Select' c2s=1111m s2c=1111m notes=('', '')
+== c2s signature frequency (first-occurrence order) ==
+  x1      first@0 (19:07:44.720)  SVR('Target Select')
+          full: SERVER_CONNECT name='Target Select' user='admin' pid=58980
+  x1110   first@1 (19:07:44.722)  GT
+
+== paired s2c values per c2s signature ==
+  aligned=True (c2s[i] <-> s2c[i])
+  SIG SVR('Target Select')  (x1) values:
+      x1      SVRrsp
+  SIG GT  (x1110) values:
+      x1110   GTrsp(n=1)

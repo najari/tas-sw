@@ -1,0 +1,344 @@
+== per-window connections (new conns within action +/-2s) ==
+-- 18:59:23.7 MCD Basic Client restart (enumeration begins)
+     18:59:24.971  CONN424   'MCD API (legacy devices)' c2s=60B msgs=1
+     18:59:25.078  CONN425   'MCD API (legacy devices)' c2s=60B msgs=1
+     18:59:25.283  CONN426   'MCD API (legacy devices)' c2s=380B msgs=10
+     18:59:25.824  CONN427   'MCD API (legacy devices)' c2s=60B msgs=1
+     18:59:25.839  CONN428   'MCD API (legacy devices)' c2s=60B msgs=1
+     18:59:25.861  CONN429   'MCD API (legacy devices)' c2s=220B msgs=4
+     18:59:26.039  CONN430   'MCD API (legacy devices)' c2s=60B msgs=1
+     18:59:26.301  CONN431   'MCD API (legacy devices)' c2s=248B msgs=4
+     18:59:26.494  CONN432   'MCD API (legacy devices)' c2s=60B msgs=1
+     18:59:26.660  CONN433   'MCD API (legacy devices)' c2s=60B msgs=1
+     18:59:26.724  CONN434   'MCD API (legacy devices)' c2s=60B msgs=1
+     18:59:26.793  CONN435   'MCD API (legacy devices)' c2s=380B msgs=10
+-- 19:02:36.2 Click "Change"
+     19:02:34.216  CONN2863  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:34.222  CONN2864  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:34.250  CONN2865  'MCD API (legacy devices)' c2s=372B msgs=9
+     19:02:34.307  CONN2866  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:34.338  CONN2867  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:34.355  CONN2868  'MCD API (legacy devices)' c2s=220B msgs=4
+     19:02:34.401  CONN2869  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:34.407  CONN2870  'MCD API (legacy devices)' c2s=248B msgs=4
+     19:02:34.447  CONN2871  'MCD API (legacy devices)' c2s=68B msgs=2
+     19:02:34.883  CONN2872  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:34.889  CONN2873  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:34.915  CONN2874  'MCD API (legacy devices)' c2s=372B msgs=9
+     19:02:34.963  CONN2875  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:34.993  CONN2876  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:35.009  CONN2877  'MCD API (legacy devices)' c2s=220B msgs=4
+     19:02:35.056  CONN2878  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:35.072  CONN2879  'MCD API (legacy devices)' c2s=248B msgs=4
+     19:02:35.103  CONN2880  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:35.539  CONN2881  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:35.545  CONN2882  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:35.552  CONN2883  'MCD API (legacy devices)' c2s=380B msgs=10
+     19:02:35.791  CONN2884  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:35.807  CONN2885  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:35.832  CONN2886  'MCD API (legacy devices)' c2s=212B msgs=3
+     19:02:35.863  CONN2887  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:35.895  CONN2888  'MCD API (legacy devices)' c2s=256B msgs=5
+     19:02:35.941  CONN2889  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:35.972  CONN2890  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:35.979  CONN2891  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:35.987  CONN2892  'MCD API (legacy devices)' c2s=372B msgs=9
+     19:02:36.034  CONN2893  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:36.041  CONN2894  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:36.064  CONN2895  'MCD API (legacy devices)' c2s=220B msgs=4
+     19:02:36.094  CONN2896  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:36.144  CONN2897  'MCD API (legacy devices)' c2s=248B msgs=4
+     19:02:36.174  CONN2898  'MCD API (legacy devices)' c2s=68B msgs=2
+     19:02:36.612  CONN2899  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:36.621  CONN2900  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:36.646  CONN2901  'MCD API (legacy devices)' c2s=372B msgs=9
+     19:02:36.703  CONN2902  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:36.733  CONN2903  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:36.741  CONN2904  'MCD API (legacy devices)' c2s=220B msgs=4
+     19:02:36.811  CONN2905  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:36.842  CONN2906  'MCD API (legacy devices)' c2s=248B msgs=4
+     19:02:36.872  CONN2907  'MCD API (legacy devices)' c2s=68B msgs=2
+     19:02:37.297  CONN2908  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:37.305  CONN2909  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:37.314  CONN2910  'MCD API (legacy devices)' c2s=372B msgs=9
+     19:02:37.370  CONN2911  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:37.377  CONN2912  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:37.385  CONN2913  'MCD API (legacy devices)' c2s=220B msgs=4
+     19:02:37.448  CONN2914  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:37.455  CONN2915  'MCD API (legacy devices)' c2s=248B msgs=4
+     19:02:37.494  CONN2916  'MCD API (legacy devices)' c2s=68B msgs=2
+     19:02:37.944  CONN2917  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:37.975  CONN2918  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:38.007  CONN2919  'MCD API (legacy devices)' c2s=372B msgs=9
+     19:02:38.053  CONN2920  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:38.060  CONN2921  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:38.089  CONN2922  'MCD API (legacy devices)' c2s=220B msgs=4
+     19:02:38.316  CONN2923  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:38.346  CONN2924  'MCD API (legacy devices)' c2s=248B msgs=4
+     19:02:38.361  CONN2925  'MCD API (legacy devices)' c2s=68B msgs=2
+     19:02:38.423  CONN2926  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:38.454  CONN2927  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:38.485  CONN2928  'MCD API (legacy devices)' c2s=372B msgs=9
+     19:02:38.531  CONN2929  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:38.538  CONN2930  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:38.563  CONN2931  'MCD API (legacy devices)' c2s=220B msgs=4
+     19:02:38.610  CONN2932  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:38.640  CONN2933  'MCD API (legacy devices)' c2s=248B msgs=4
+     19:02:38.671  CONN2934  'MCD API (legacy devices)' c2s=68B msgs=2
+     19:02:39.135  CONN2935  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:39.142  CONN2936  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:39.155  CONN2937  'MCD API (legacy devices)' c2s=372B msgs=9
+     19:02:39.213  CONN2938  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:39.221  CONN2939  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:39.251  CONN2940  'MCD API (legacy devices)' c2s=220B msgs=4
+     19:02:39.306  CONN2941  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:39.313  CONN2942  'MCD API (legacy devices)' c2s=248B msgs=4
+     19:02:39.352  CONN2943  'MCD API (legacy devices)' c2s=68B msgs=2
+     19:02:39.804  CONN2944  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:39.813  CONN2945  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:39.841  CONN2946  'MCD API (legacy devices)' c2s=372B msgs=9
+     19:02:39.914  CONN2947  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:39.923  CONN2948  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:02:39.976  CONN2949  'MCD API (legacy devices)' c2s=220B msgs=4
+-- 19:03:07.8 Click Core 0 "Select" -> session
+     19:03:05.022  CONN3259  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:05.043  CONN3260  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:05.080  CONN3261  'MCD API (legacy devices)' c2s=372B msgs=9
+     19:03:05.179  CONN3262  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:05.234  CONN3263  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:05.279  CONN3264  'MCD API (legacy devices)' c2s=220B msgs=4
+     19:03:05.386  CONN3265  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:05.421  CONN3266  'MCD API (legacy devices)' c2s=248B msgs=4
+     19:03:05.517  CONN3267  'MCD API (legacy devices)' c2s=68B msgs=2
+     19:03:05.603  CONN3268  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:05.648  CONN3269  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:05.691  CONN3270  'MCD API (legacy devices)' c2s=372B msgs=9
+     19:03:05.808  CONN3271  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:05.839  CONN3272  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:05.957  CONN3273  'MCD API (legacy devices)' c2s=220B msgs=4
+     19:03:06.108  CONN3274  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:06.146  CONN3275  'MCD API (legacy devices)' c2s=248B msgs=4
+     19:03:06.194  CONN3276  'MCD API (legacy devices)' c2s=68B msgs=2
+     19:03:06.292  CONN3277  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:06.339  CONN3278  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:06.404  CONN3279  'MCD API (legacy devices)' c2s=372B msgs=9
+     19:03:06.534  CONN3280  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:06.566  CONN3281  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:06.621  CONN3282  'MCD API (legacy devices)' c2s=220B msgs=4
+     19:03:06.756  CONN3283  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:06.830  CONN3284  'MCD API (legacy devices)' c2s=248B msgs=4
+     19:03:06.938  CONN3285  'MCD API (legacy devices)' c2s=68B msgs=2
+     19:03:07.194  CONN3286  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:07.231  CONN3287  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:07.313  CONN3288  'MCD API (legacy devices)' c2s=372B msgs=9
+     19:03:07.412  CONN3289  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:07.458  CONN3290  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:07.502  CONN3291  'MCD API (legacy devices)' c2s=220B msgs=4
+     19:03:07.662  CONN3292  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:07.745  CONN3293  'MCD API (legacy devices)' c2s=248B msgs=4
+     19:03:07.824  CONN3294  'MCD API (legacy devices)' c2s=68B msgs=2
+     19:03:07.920  CONN3295  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:07.958  CONN3296  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:07.999  CONN3297  'MCD API (legacy devices)' c2s=372B msgs=9
+     19:03:08.089  CONN3298  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:08.164  CONN3299  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:08.257  CONN3300  'MCD API (legacy devices)' c2s=220B msgs=4
+     19:03:08.367  CONN3301  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:08.439  CONN3302  'MCD API (legacy devices)' c2s=248B msgs=4
+     19:03:08.524  CONN3303  'MCD API (legacy devices)' c2s=68B msgs=2
+     19:03:08.612  CONN3304  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:08.649  CONN3305  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:08.709  CONN3306  'MCD API (legacy devices)' c2s=372B msgs=9
+     19:03:08.814  CONN3307  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:08.859  CONN3308  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:08.911  CONN3309  'MCD API (legacy devices)' c2s=220B msgs=4
+     19:03:09.051  CONN3310  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:09.124  CONN3311  'MCD API (legacy devices)' c2s=248B msgs=4
+     19:03:09.238  CONN3312  'MCD API (legacy devices)' c2s=68B msgs=2
+     19:03:09.498  CONN3313  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:09.537  CONN3314  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:09.614  CONN3315  'MCD API (legacy devices)' c2s=372B msgs=9
+     19:03:09.741  CONN3316  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:09.777  CONN3317  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:09.824  CONN3318  'MCD API (legacy devices)' c2s=220B msgs=4
+     19:03:09.933  CONN3319  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:09.963  CONN3320  'MCD API (legacy devices)' c2s=248B msgs=4
+     19:03:10.066  CONN3321  'MCD API (legacy devices)' c2s=68B msgs=2
+     19:03:10.128  CONN3322  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:10.153  CONN3323  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:10.170  CONN3324  'MCD API (legacy devices)' c2s=372B msgs=9
+     19:03:10.254  CONN3325  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:10.271  CONN3326  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:10.289  CONN3327  'MCD API (legacy devices)' c2s=220B msgs=4
+     19:03:10.334  CONN3328  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:10.356  CONN3329  'MCD API (legacy devices)' c2s=248B msgs=4
+     19:03:10.392  CONN3330  'MCD API (legacy devices)' c2s=68B msgs=2
+     19:03:10.846  CONN3331  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:10.862  CONN3332  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:10.882  CONN3333  'MCD API (legacy devices)' c2s=372B msgs=9
+     19:03:10.956  CONN3334  'MCD API (legacy devices)' c2s=60B msgs=1
+     19:03:10.974  CONN3335  'MCD API (legacy devices)' c2s=60B msgs=1
+-- 19:03:38.0 Click "Read" (addr 0) -> failure popup
+-- 19:04:03.9 Close error popup
+-- 19:04:06.6 Click "Core Info"
+-- 19:04:32.8 Close Core Info
+-- 19:04:35.5 Click "Help"
+-- 19:05:02.6 Close Help
+-- 19:05:05.3 Launch MCDS Trace Viewer
+-- 19:07:05.9 Device>Connect click attempt (missed)
+-- 19:07:43.9 Alt+D -> Target Select opens
+     19:07:44.717  CONN3342  'Target Select' c2s=8940B msgs=1111
+     19:07:44.911  CONN3343  'Target Select' c2s=188B msgs=3
+     19:07:44.963  CONN3344  'Target Select' c2s=176B msgs=2
+     19:07:45.415  CONN3345  'Target Select' c2s=188B msgs=3
+     19:07:45.461  CONN3346  'Target Select' c2s=176B msgs=2
+     19:07:46.038  CONN3347  'Target Select' c2s=188B msgs=3
+     19:07:46.084  CONN3348  'Target Select' c2s=176B msgs=2
+     19:07:46.651  CONN3349  'Target Select' c2s=188B msgs=3
+     19:07:46.683  CONN3350  'Target Select' c2s=176B msgs=2
+-- 19:08:12.9 Click target "Info"
+     19:08:10.494  CONN3423  'Target Select' c2s=188B msgs=3
+     19:08:10.521  CONN3424  'Target Select' c2s=176B msgs=2
+     19:08:11.009  CONN3425  'Target Select' c2s=188B msgs=3
+     19:08:11.055  CONN3426  'Target Select' c2s=176B msgs=2
+     19:08:11.594  CONN3427  'Target Select' c2s=188B msgs=3
+     19:08:11.644  CONN3428  'Target Select' c2s=176B msgs=2
+     19:08:12.374  CONN3429  'Target Select' c2s=188B msgs=3
+     19:08:12.442  CONN3430  'Target Select' c2s=176B msgs=2
+     19:08:12.906  CONN3431  'Target Select' c2s=188B msgs=3
+     19:08:12.952  CONN3432  'Target Select' c2s=176B msgs=2
+     19:08:13.497  CONN3433  'Target Select' c2s=188B msgs=3
+     19:08:13.529  CONN3434  'Target Select' c2s=176B msgs=2
+     19:08:13.992  CONN3435  'Target Select' c2s=188B msgs=3
+     19:08:14.035  CONN3436  'Target Select' c2s=176B msgs=2
+     19:08:14.217  CONN3437  'con_info' c2s=248B msgs=3
+     19:08:14.248  CONN3438  'con_info' c2s=248B msgs=3
+     19:08:14.779  CONN3439  'Target Select' c2s=188B msgs=3
+     19:08:14.810  CONN3440  'Target Select' c2s=176B msgs=2
+     19:08:15.288  CONN3441  'Target Select' c2s=188B msgs=3
+     19:08:15.335  CONN3442  'Target Select' c2s=176B msgs=2
+     19:08:15.878  CONN3443  'Target Select' c2s=188B msgs=3
+     19:08:15.927  CONN3444  'Target Select' c2s=176B msgs=2
+-- 19:11:36.4 Click target "Select"
+     19:11:34.263  CONN4073  'Target Select' c2s=188B msgs=3
+     19:11:34.327  CONN4074  'Target Select' c2s=176B msgs=2
+     19:11:34.966  CONN4075  'Target Select' c2s=188B msgs=3
+     19:11:35.012  CONN4076  'Target Select' c2s=176B msgs=2
+     19:11:35.651  CONN4077  'Target Select' c2s=188B msgs=3
+     19:11:35.676  CONN4078  'Target Select' c2s=176B msgs=2
+     19:11:36.147  CONN4079  'Target Select' c2s=188B msgs=3
+     19:11:36.211  CONN4080  'Target Select' c2s=176B msgs=2
+     19:11:36.756  CONN4081  'Target Select' c2s=188B msgs=3
+     19:11:36.806  CONN4082  'Target Select' c2s=176B msgs=2
+     19:11:37.256  CONN4083  'Target Select' c2s=188B msgs=3
+     19:11:37.320  CONN4084  'Target Select' c2s=176B msgs=2
+     19:11:37.354  CONN4085  'MCDS recorder' c2s=507036B msgs=19175
+-- 19:12:46.3 Close frequency notice
+-- 19:13:14.7 MCDS>General (Ctrl+G)
+-- 19:13:37.9 Alt+R (Start Recording)
+-- 19:15:02.8 Close "No trace data" / stop proxy
+
+== SESSION_START census: 1717 attempts ==
+  err histogram: OK=1715, PL1_CMD_FAILED=1, SESSION=1
+  first 8:
+    18:59:25.770 CONN426 err=OK devtype=0x401da083 rq/rsp=1/1
+    18:59:25.961 CONN429 err=OK devtype=0x401da083 rq/rsp=1/1
+     CONN431 err=OK devtype=0x401da083 rq/rsp=1/1
+    18:59:26.908 CONN435 err=OK devtype=0x401da083 rq/rsp=1/1
+    18:59:27.506 CONN438 err=OK devtype=0x401da083 rq/rsp=1/1
+     CONN440 err=OK devtype=0x401da083 rq/rsp=1/1
+    18:59:28.554 CONN444 err=OK devtype=0x401da083 rq/rsp=1/1
+    18:59:29.109 CONN447 err=OK devtype=0x401da083 rq/rsp=1/1
+  last 4:
+     CONN4083 err=OK devtype=0x401da083 rq/rsp=1/1
+     CONN4084 err=OK devtype=0x401da083 rq/rsp=1/1
+     CONN4085 err=SESSION devtype=0x0 rq/rsp=2/2
+     CONN4085 err=OK devtype=0x401da083 rq/rsp=2/2
+  non-OK attempts: 2
+    19:08:14.231 CONN3437 err=PL1_CMD_FAILED rq/rsp=1/1
+     CONN4085 err=SESSION rq/rsp=2/2
+
+== GET_TARGETS responses ==
+  x1741  n=1 v0='DAS JTAG AURDUINO 46YPEADW' dt=0x401da083
+
+== anomaly census (err != OK) ==
+  x2      PL0_RD PL0_DATA   sample: CONN3341 PL0_START rsp con_id=0x84 err=OK; RD32 rsp wlrd=0 err=PL0_DATA data=0x0; PL0_END rsp cnt=0x014b
+  x1      PL1 PL1_CMD_FAILED   sample: CONN3437 SESSION_START rsp con_id=0 err=PL1_CMD_FAILED vmin=1 vmax=1 ninst=0 maxrq=0 maxrsp=0 devtype=0x00000000 devid=0x00000000
+  x1      PL1 SESSION   sample: CONN4085 SESSION_START rsp con_id=0 err=SESSION vmin=1 vmax=1 ninst=0 maxrq=0 maxrsp=0 devtype=0x00000000 devid=0x00000000:0x0000
+
+== flows per client name ==
+-- 'MCD API (legacy devices)' total conns=2918
+     x1660   SERVER_CONNECT
+     x305    SERVER_CONNECT+SESSION_START+PL0 x2
+     x304    SERVER_CONNECT+SESSION_START+PL0+PING x6
+     x286    SERVER_CONNECT+SESSION_START+PL0+GET_TARGETS x1
+     x285    SERVER_CONNECT+GET_TARGETS
+     x20     SERVER_CONNECT+GET_TARGETS+SESSION_START+PL0+PING x6
+     x19     SERVER_CONNECT+SESSION_START+PL0 x1
+     x19     SERVER_CONNECT+GET_TARGETS+SESSION_START+PL0 x2
+     x19     SERVER_CONNECT+GET_TARGETS+SESSION_START+PL0 x1
+     x1      SERVER_CONNECT+GET_TARGETS+SESSION_START+PING+PL0+SET_DEVICE_KEY+DEVICE_CONNECT x9476
+-- 'Target Select' total conns=741
+     x370    SERVER_CONNECT+SESSION_START+DEVICE_CONNECT
+     x370    SERVER_CONNECT+SESSION_START
+     x1      SERVER_CONNECT+GET_TARGETS
+-- 'con_info' total conns=2
+     x1      SERVER_CONNECT+GET_CLIENTS+SESSION_START
+     x1      SERVER_CONNECT+SESSION_START+GET_CLIENTS
+-- 'MCDS recorder' total conns=1
+     x1      SERVER_CONNECT+GET_TARGETS+SESSION_START+DEVICE_CONNECT+PL0 x19170
+
+== MCD churn: 2871 conns during 18:59:24-19:03:07 (=12.9/s) ==
+  inter-conn gap min/med/max = 0.105/0.043/0.046 s
+== MCD conns created after 19:07:44: 0 ==
+
+== new-conn buckets (10 s) ==
+  18:59:20  MCD=33
+  18:59:30  MCD=83
+  18:59:40  MCD=133
+  18:59:50  MCD=134
+  19:00:00  MCD=130
+  19:00:10  MCD=138
+  19:00:20  MCD=156
+  19:00:30  MCD=152
+  19:00:40  MCD=139
+  19:00:50  MCD=141
+  19:01:00  MCD=129
+  19:01:10  MCD=115
+  19:01:20  MCD=123
+  19:01:30  MCD=77
+  19:01:40  MCD=117
+  19:01:50  MCD=144
+  19:02:00  MCD=144
+  19:02:10  MCD=144
+  19:02:20  MCD=144
+  19:02:30  MCD=150
+  19:02:40  MCD=126
+  19:02:50  MCD=126
+  19:03:00  MCD=119
+  19:03:10  MCD=21
+  19:07:40  Targe=17
+  19:07:50  Targe=32
+  19:08:00  Targe=32
+  19:08:10  Targe=32  con_i=2
+  19:08:20  Targe=32
+  19:08:30  Targe=32
+  19:08:40  Targe=30
+  19:08:50  Targe=32
+  19:09:00  Targe=31
+  19:09:10  Targe=33
+  19:09:20  Targe=32
+  19:09:30  Targe=32
+  19:09:40  Targe=32
+  19:09:50  Targe=32
+  19:10:00  Targe=30
+  19:10:10  Targe=32
+  19:10:20  Targe=32
+  19:10:30  Targe=32
+  19:10:40  Targe=32
+  19:10:50  Targe=30
+  19:11:00  Targe=34
+  19:11:10  Targe=32
+  19:11:20  Targe=30
+  19:11:30  Targe=26  MCDS=1
+

@@ -1,0 +1,7 @@
+CONN3321 name='MCD API (legacy devices)' c2s=2m s2c=2m notes=('', '')
+-- C2S messages --
+[19:03:10.084] #0       60B  SERVER_CONNECT name='MCD API (legacy devices)' user='admin' pid=48160
+[19:03:10.093] #1        8B  GET_TARGETS start=0 res=0
+-- S2C messages --
+[19:03:10.091] #0      140B  SERVER_CONNECT rsp err=OK server='TasServer' ver=0.2 protos=0x2 chl=0x2 trc=0x8000000c date='Apr 30 2026'
+[19:03:10.109] #1      100B  GET_TARGETS rsp err=OK n=1; target[0] id='DAS JTAG AURDUINO 46YPEADW' devtype=0x401da083 devid=0x47427060:0x11080040:0x64945fcb:0x20e65c06 phys=0x01 nclient=2

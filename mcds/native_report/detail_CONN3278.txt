@@ -1,0 +1,5 @@
+CONN3278 name='MCD API (legacy devices)' c2s=1m s2c=1m notes=('', '')
+-- C2S messages --
+[19:03:06.381] #0       60B  SERVER_CONNECT name='MCD API (legacy devices)' user='admin' pid=48160
+-- S2C messages --
+[19:03:06.399] #0      140B  SERVER_CONNECT rsp err=OK server='TasServer' ver=0.2 protos=0x2 chl=0x2 trc=0x8000000c date='Apr 30 2026'
