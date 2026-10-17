@@ -1,0 +1,12 @@
+TAS CHL API demo
+
+Server Info: 
+Started at 2026-10-17 14:39:37
+TasServer V2.0 (Apr 30 2026)
+Server IP:port: localhost:24817
+
+Number of targets: 1
+Target 0: TC27x LBHJYL (DAS JTAG AURDUINO 46YPEADW)
+
+Connecting to the first target from the list...
+Failed to start a session, ERROR: Could not read channel description from device

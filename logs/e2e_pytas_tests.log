@@ -1,0 +1,28 @@
+test_execute_transaction (tas_python_client_rw_test.TestTasClientRw.test_execute_transaction) ... ok
+test_fill32 (tas_python_client_rw_test.TestTasClientRw.test_fill32) ... ok
+test_fill64 (tas_python_client_rw_test.TestTasClientRw.test_fill64) ... ok
+test_read (tas_python_client_rw_test.TestTasClientRw.test_read) ... ok
+test_read16 (tas_python_client_rw_test.TestTasClientRw.test_read16) ... ok
+test_read32 (tas_python_client_rw_test.TestTasClientRw.test_read32) ... ok
+test_read64 (tas_python_client_rw_test.TestTasClientRw.test_read64) ... ok
+test_read8 (tas_python_client_rw_test.TestTasClientRw.test_read8) ... ok
+test_read_write (tas_python_client_rw_test.TestTasClientRw.test_read_write) ... ok
+test_unaligned_write_read (tas_python_client_rw_test.TestTasClientRw.test_unaligned_write_read) ... ok
+test_write (tas_python_client_rw_test.TestTasClientRw.test_write) ... ok
+test_write16 (tas_python_client_rw_test.TestTasClientRw.test_write16) ... ok
+test_write32 (tas_python_client_rw_test.TestTasClientRw.test_write32) ... ok
+test_write64 (tas_python_client_rw_test.TestTasClientRw.test_write64) ... ok
+test_write8 (tas_python_client_rw_test.TestTasClientRw.test_write8) ... ok
+test_connect_successful (tas_python_client_server_test.TestTasClientServer.test_connect_successful) ... ok
+test_connect_to_target (tas_python_client_server_test.TestTasClientServer.test_connect_to_target) ... ok
+test_connect_unseccessful (tas_python_client_server_test.TestTasClientServer.test_connect_unseccessful) ... ok
+test_get_ip_address (tas_python_client_server_test.TestTasClientServer.test_get_ip_address) ... ok
+test_get_server_info (tas_python_client_server_test.TestTasClientServer.test_get_server_info) ... ok
+test_get_server_port (tas_python_client_server_test.TestTasClientServer.test_get_server_port) ... ok
+test_get_target_clients (tas_python_client_server_test.TestTasClientServer.test_get_target_clients) ... ok
+test_get_targets (tas_python_client_server_test.TestTasClientServer.test_get_targets) ... ok
+
+----------------------------------------------------------------------
+Ran 23 tests in 5.338s
+
+OK

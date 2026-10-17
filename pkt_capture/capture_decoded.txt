@@ -1,0 +1,183 @@
+===== c2s.bin (c2s), 384 bytes =====
+
+[00] @0x0000  c2s  PL2_size=60
+   -> PL1 SERVER_CONNECT request
+      reserved=0
+      client_name='PktCaptureDemo'
+      user_name='admin'
+      client_pid=13944
+
+[01] @0x003c  c2s  PL2_size=8
+   -> PL1 GET_TARGETS request
+      start_index=0
+      reserved=0
+      0000: 00 86 00 00                                     ....
+
+[02] @0x0044  c2s  PL2_size=116
+   -> PL1 SESSION_START request
+      con_id=0
+      client_type=1 (1=RW)
+      param8=00000000
+      param64=0x0
+      identifier='DAS JTAG AURDUINO 46YPEADW'
+      session_name='PktSession'
+      session_pw=''
+
+[03] @0x00b8  c2s  PL2_size=12
+   -> PL1 DEVICE_CONNECT request
+      con_id=0
+      reserved=0
+      option=0x0003 (3=RESET_AND_HALT)
+      0000: 01 A8 00 00 03 00 00 00                         ........
+
+[04] @0x00c4  c2s  PL2_size=24
+   -> PL0 RW frame (2 PL0 item(s))
+  PL1 rq  PL0_START wl=1 con_id=0xff protoc_ver=0 pl1_cnt=0xffc1 addr_map_mask=0x0001
+  PL0 rq  BASE_ADDR32 ba31to16=0x7000 (-> 0x70000000)
+  PL0 rq  RD32 a15to0=0x0000
+  PL1 rq  PL0_END   wl=0 num_pl0_rw=1
+      0000: 01 B0 FF 00 C1 FF 01 00 00 15 00 70 00 25 00 00 ...........p.%..
+      0010: 00 B1 01 00                                     ....
+
+[05] @0x00dc  c2s  PL2_size=24
+   -> PL0 RW frame (2 PL0 item(s))
+  PL1 rq  PL0_START wl=1 con_id=0xff protoc_ver=0 pl1_cnt=0xffc2 addr_map_mask=0x0001
+  PL0 rq  BASE_ADDR32 ba31to16=0x7000 (-> 0x70000000)
+  PL0 rq  RD32 a15to0=0x0004
+  PL1 rq  PL0_END   wl=0 num_pl0_rw=1
+      0000: 01 B0 FF 00 C2 FF 01 00 00 15 00 70 00 25 04 00 ...........p.%..
+      0010: 00 B1 01 00                                     ....
+
+[06] @0x00f4  c2s  PL2_size=28
+   -> PL0 RW frame (2 PL0 item(s))
+  PL1 rq  PL0_START wl=1 con_id=0xff protoc_ver=0 pl1_cnt=0xffc3 addr_map_mask=0x0001
+  PL0 rq  BASE_ADDR32 ba31to16=0x7000 (-> 0x70000000)
+  PL0 rq  WR32 a15to0=0x0000 data=0x12345678
+  PL1 rq  PL0_END   wl=0 num_pl0_rw=1
+      0000: 01 B0 FF 00 C3 FF 01 00 00 15 00 70 01 24 00 00 ...........p.$..
+      0010: 78 56 34 12 00 B1 01 00                         xV4.....
+
+[07] @0x0110  c2s  PL2_size=24
+   -> PL0 RW frame (2 PL0 item(s))
+  PL1 rq  PL0_START wl=1 con_id=0xff protoc_ver=0 pl1_cnt=0xffc4 addr_map_mask=0x0001
+  PL0 rq  BASE_ADDR32 ba31to16=0x7000 (-> 0x70000000)
+  PL0 rq  RD32 a15to0=0x0000
+  PL1 rq  PL0_END   wl=0 num_pl0_rw=1
+      0000: 01 B0 FF 00 C4 FF 01 00 00 15 00 70 00 25 00 00 ...........p.%..
+      0010: 00 B1 01 00                                     ....
+
+[08] @0x0128  c2s  PL2_size=28
+   -> PL0 RW frame (3 PL0 item(s))
+  PL1 rq  PL0_START wl=1 con_id=0xff protoc_ver=0 pl1_cnt=0xffc5 addr_map_mask=0x0001
+  PL0 rq  ACCESS_MODE acc_mode=0x0001
+  PL0 rq  BASE_ADDR32 ba31to16=0x7000 (-> 0x70000000)
+  PL0 rq  RD8 a15to0=0x0003
+  PL1 rq  PL0_END   wl=0 num_pl0_rw=1
+      0000: 01 B0 FF 00 C5 FF 01 00 00 10 01 00 00 15 00 70 ...............p
+      0010: 00 21 03 00 00 B1 01 00                         .!......
+
+[09] @0x0144  c2s  PL2_size=28
+   -> PL0 RW frame (2 PL0 item(s))
+  PL1 rq  PL0_START wl=1 con_id=0xff protoc_ver=0 pl1_cnt=0xffc6 addr_map_mask=0x0001
+  PL0 rq  BASE_ADDR32 ba31to16=0x7000 (-> 0x70000000)
+  PL0 rq  RDBLK a15to0=0x0000 wlrd=60 (words; 0=256)
+  PL1 rq  PL0_END   wl=0 num_pl0_rw=1
+      0000: 01 B0 FF 00 C6 FF 01 00 00 15 00 70 01 2C 00 00 ...........p.,..
+      0010: 3C 00 00 00 00 B1 01 00                         <.......
+
+[10] @0x0160  c2s  PL2_size=32
+   -> PL0 RW frame (4 PL0 item(s))
+  PL1 rq  PL0_START wl=1 con_id=0xff protoc_ver=0 pl1_cnt=0xffc7 addr_map_mask=0x0001
+  PL0 rq  BASE_ADDR32 ba31to16=0xdead (-> 0xDEAD0000)
+  PL0 rq  RD8 a15to0=0xbeef
+  PL0 rq  RD16 a15to0=0xbef0
+  PL0 rq  RD8 a15to0=0xbef2
+  PL1 rq  PL0_END   wl=0 num_pl0_rw=3
+      0000: 01 B0 FF 00 C7 FF 01 00 00 15 AD DE 00 21 EF BE .............!..
+      0010: 00 23 F0 BE 00 21 F2 BE 00 B1 03 00             .#...!......
+
+
+===== s2c.bin (s2c), 768 bytes =====
+
+[00] @0x0000  s2c  PL2_size=140
+   -> PL1 SERVER_CONNECT response
+      wl=33 err=NO_ERROR(0x08) reserved1=0
+      server_name='TasServer' v_major=2 v_minor=0
+      supp_protoc_ver=0x2 supp_chl_target=0x2 supp_trc_type=0x8000000c
+      date='Apr 30 2026'
+      start_time_us=1792215577030000 (2026-10-17 05:39:37.030000 UTC)
+      challenge=0x0000000000000000
+
+[01] @0x008c  s2c  PL2_size=100
+   -> PL1 GET_TARGETS response
+      wl=23 err=NO_ERROR(0x08) num_target=1 start_index=0 num_now=1
+      target[0] identifier='DAS JTAG AURDUINO 46YPEADW'
+                 device_type=0x401da083 device_id=0x47427060:0x11080040:0x64945fcb:0x20e65c06
+                 dev_con_phys=0x01 num_client=0
+
+[02] @0x00f0  s2c  PL2_size=136
+   -> PL1 SESSION_START response (tas_pl1rsp_ping_st)
+      wl=32 con_id=0x00 err=NO_ERROR(0x08) protoc_ver_min=1 protoc_ver_max=1 num_instances=0
+      con_info: max_pl2rq=1060 max_pl2rsp=1040 device_type=0x401da083
+                device_id=0x47427060:0x11080040:0x64945fcb:0x20e65c06
+                ipv4=0x00000000 dev_con_feat=0x0013 dev_con_phys=0x01 pl0_max_num_rw=32
+                pl0_rw_mode_mask=0x0000 pl0_addr_map_mask=0x8001
+                msg_length_c2d=0 msg_length_d2c=0 msg_num_c2d=0 msg_num_d2c=0
+                identifier='DAS JTAG AURDUINO 46YPEADW'
+                device_id_hash=0x4013a2aa device_id_hash_str='LBHJYL'
+
+[03] @0x0178  s2c  PL2_size=16
+   -> PL1 DEVICE_CONNECT response
+      wl=2 con_id=0x81 err=NO_ERROR(0x08) feat_used=0x0003 reserved=0 device_type=0x401da083
+      0000: 02 A8 81 08 03 00 00 00 83 A0 1D 40             ...........@
+
+[04] @0x0188  s2c  PL2_size=20
+   -> PL0 RW frame (1 PL0 item(s))
+  PL1 rsp PL0_START wl=0 con_id=0x81 err=NO_ERROR(0x08)
+  PL0 rsp RD rsp wlrd=1 err=PL0_NO_ERROR(0x80) data=0x00000000
+  PL1 rsp PL0_END   wl=0 pl1_cnt=0xffc1
+      0000: 00 B0 81 08 01 25 01 80 00 00 00 00 00 B1 C1 FF .....%..........
+
+[05] @0x019c  s2c  PL2_size=20
+   -> PL0 RW frame (1 PL0 item(s))
+  PL1 rsp PL0_START wl=0 con_id=0x81 err=NO_ERROR(0x08)
+  PL0 rsp RD rsp wlrd=1 err=PL0_NO_ERROR(0x80) data=0x00000000
+  PL1 rsp PL0_END   wl=0 pl1_cnt=0xffc2
+      0000: 00 B0 81 08 01 25 01 80 00 00 00 00 00 B1 C2 FF .....%..........
+
+[06] @0x01b0  s2c  PL2_size=16
+   -> PL0 RW frame (1 PL0 item(s))
+  PL1 rsp PL0_START wl=0 con_id=0x81 err=NO_ERROR(0x08)
+  PL0 rsp WR rsp wlwr=1 err=PL0_NO_ERROR(0x80)
+  PL1 rsp PL0_END   wl=0 pl1_cnt=0xffc3
+      0000: 00 B0 81 08 00 24 01 80 00 B1 C3 FF             .....$......
+
+[07] @0x01c0  s2c  PL2_size=20
+   -> PL0 RW frame (1 PL0 item(s))
+  PL1 rsp PL0_START wl=0 con_id=0x81 err=NO_ERROR(0x08)
+  PL0 rsp RD rsp wlrd=1 err=PL0_NO_ERROR(0x80) data=0x12345678
+  PL1 rsp PL0_END   wl=0 pl1_cnt=0xffc4
+      0000: 00 B0 81 08 01 25 01 80 78 56 34 12 00 B1 C4 FF .....%..xV4.....
+
+[08] @0x01d4  s2c  PL2_size=20
+   -> PL0 RW frame (1 PL0 item(s))
+  PL1 rsp PL0_START wl=0 con_id=0x81 err=NO_ERROR(0x08)
+  PL0 rsp RD rsp wlrd=1 err=PL0_NO_ERROR(0x80) data=0x12345612
+  PL1 rsp PL0_END   wl=0 pl1_cnt=0xffc5
+      0000: 00 B0 81 08 01 21 01 80 12 56 34 12 00 B1 C5 FF .....!...V4.....
+
+[09] @0x01e8  s2c  PL2_size=256
+   -> PL0 RW frame (1 PL0 item(s))
+  PL1 rsp PL0_START wl=0 con_id=0x81 err=NO_ERROR(0x08)
+  PL0 rsp RDBLK rsp wlrd=60 err=PL0_NO_ERROR(0x80) data_words=60 first_words=0x12345678 0x00000000 0x00000000 0x00000000 ...
+  PL1 rsp PL0_END   wl=0 pl1_cnt=0xffc6
+
+[10] @0x02e8  s2c  PL2_size=24
+   -> PL0 RW frame (3 PL0 item(s))
+  PL1 rsp PL0_START wl=0 con_id=0x81 err=NO_ERROR(0x08)
+  PL0 rsp RD rsp wlrd=0 err=PL0_DATA(0x8D) data=
+  PL0 rsp RD rsp wlrd=0 err=PL0_CONSEQUENTIAL(0x98) data=
+  PL0 rsp RD rsp wlrd=0 err=PL0_CONSEQUENTIAL(0x98) data=
+  PL1 rsp PL0_END   wl=0 pl1_cnt=0xffc7
+      0000: 00 B0 81 08 00 21 00 8D 00 23 00 98 00 21 00 98 .....!...#...!..
+      0010: 00 B1 C7 FF                                     ....

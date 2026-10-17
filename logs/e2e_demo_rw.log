@@ -1,0 +1,89 @@
+TAS API demo
+
+Server Info: 
+Started at 2026-10-17 14:39:37
+TasServer V2.0 (Apr 30 2026)
+Server IP:port: localhost:24817
+
+Number of targets: 1
+Target 0: TC27x LBHJYL (DAS JTAG AURDUINO 46YPEADW)
+
+Connecting to the first target from the list...
+TARGET:
+device_type    0x401DA083 (TC27x)
+device_id      0x47427060 0x11080040 0x64945FCB 0x20E65C06
+device_id_hash 0x4013A2AA (LBHJYL)
+dev_con_phys   JTAG
+identifier     DAS JTAG AURDUINO 46YPEADW
+ipv4_addr      Information not accessible or not supported
+max_pkt_size   rq 1060, rsp 1040
+max_num_rw     32
+rw_mode_mask   0x0000
+addr_map_mask  0x8001
+dev_con_feat   reset|HAR, unlocking
+
+TAS channel support was not checked by this client
+
+
+
+
+Basic read/write operations
+	Read - write - read 1 Byte at address 0x70000000
+Read data: 00
+Write 0xAB
+Read back data: AB
+
+	Read - write - read 1 Byte at address 0x70000001
+Read data: 00
+Write 0xCD
+Read back data: CD
+
+	Read - write - read 4 Bytes at address 0x70000000
+Read data: 00000000
+Write 0xABCDEF09
+Read back data: ABCDEF09
+
+	Read - write - read 4 Bytes at unaligned address 0x70000001
+Read data: 00ABCDEF
+Write 0x12345678
+Read back data @0x70000000: 34567809
+Read back data @0x70000004: 00000012
+
+Fill data starting from target address
+Data @0x70000000: 1234ABCD
+Data @0x70000004: 1234ABCD
+Data @0x70000008: 1234ABCD
+Data @0x7000000C: 1234ABCD
+Data @0x70000010: 1234ABCD
+Data @0x70000014: 1234ABCD
+Data @0x70000018: 1234ABCD
+Data @0x7000001C: 1234ABCD
+Data @0x70000020: 1234ABCD
+Data @0x70000024: 1234ABCD
+Data @0x70000028: 1234ABCD
+Data @0x7000002C: 1234ABCD
+Data @0x70000030: 1234ABCD
+Data @0x70000034: 1234ABCD
+Data @0x70000038: 1234ABCD
+Data @0x7000003C: 1234ABCD
+Data @0x70000040: 1234ABCD
+Data @0x70000044: 1234ABCD
+Data @0x70000048: 1234ABCD
+Data @0x7000004C: 1234ABCD
+Data @0x70000050: 1234ABCD
+Data @0x70000054: 1234ABCD
+Data @0x70000058: 1234ABCD
+Data @0x7000005C: 1234ABCD
+Data @0x70000060: 1234ABCD
+Data @0x70000064: 1234ABCD
+Data @0x70000068: 1234ABCD
+Data @0x7000006C: 1234ABCD
+Data @0x70000070: 1234ABCD
+Data @0x70000074: 1234ABCD
+Data @0x70000078: 1234ABCD
+Data @0x7000007C: 1234ABCD
+
+Read - write - read with transaction list
+Read transaction:  00000000
+Write transaction: FFABCDEF
+Read transaction:  FFABCDEF
