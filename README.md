@@ -9,6 +9,7 @@ TAS(Infineon) 관련 자체 분석·검증 자료 모음 (2026-10-17).
 | [REPORT.md](docs/REPORT.md) | TasServer(백그라운드 실행 파일) 정적·런타임 분석: 파일 신원, 시작 흐름, 배포·자동 기동 구조, 기능 인벤토리, 보안 참고 |
 | [TAS_CLIENT_BUILD_AND_E2E.md](docs/TAS_CLIENT_BUILD_AND_E2E.md) | 공식 tas_client_api v1.2.4 소스 빌드(conan + MSVC) 재현 가이드, 산출물, 실기(TC27x) E2E 검증, PyTAS 설치 |
 | [TAS_PROTOCOL_CAPTURE.md](docs/TAS_PROTOCOL_CAPTURE.md) | 클라이언트-서버 평문 프로토콜 캡처 전량 해석: PL2/PL1/PL0 계층 포맷, 패킷별 해설, 자체 구현 가이드 |
+| [DAS_DLL_ANALYSIS.md](docs/DAS_DLL_ANALYSIS.md) | DAS 클라이언트 DLL(das_api.dll·mcdxdas.dll) 구현 분석: 로더·함수 테이블, 내장 TAS 클라이언트, 서버 자동 기동, MCD↔DAS 연동 구조 |
 
 ## 캡처 워크스페이스 (`pkt_capture/`)
 
