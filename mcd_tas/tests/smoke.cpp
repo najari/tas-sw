@@ -25,6 +25,7 @@ typedef mcd_return_et (*pfn_qry_devices)(const mcd_core_con_info_st *, uint32_t,
 typedef mcd_return_et (*pfn_qry_cores)(const mcd_core_con_info_st *, uint32_t, uint32_t *, mcd_core_con_info_st *);
 typedef void           (*pfn_qry_error)(const mcd_core_st *, mcd_error_info_st *);
 typedef mcd_return_et (*pfn_run)(const mcd_core_st *, mcd_bool_t);
+typedef mcd_return_et (*pfn_stop)(const mcd_core_st *, mcd_bool_t);
 typedef mcd_return_et (*pfn_open_core)(const mcd_core_con_info_st *, mcd_core_st **);
 typedef mcd_return_et (*pfn_close_core)(const mcd_core_st *);
 typedef mcd_return_et (*pfn_qry_mem_spaces)(const mcd_core_st *, uint32_t, uint32_t *, mcd_memspace_st *);
@@ -50,17 +51,22 @@ int main(int argc, char **argv)
     const char *dll  = (argc > 1 && argv[1][0] && argv[1][0] != '-') ? argv[1] : "mcd_tas.dll";
     const char *cfg  = (argc > 2 && argv[2][0] && argv[2][0] != '-') ? argv[2] : NULL;
     int attach = 0;
+    int runstop = 0;
     mcd_return_et r;
     uint32_t n;
     uint32_t i;
 
-    for (i = 1; i < (uint32_t)argc; i++)
+    for (i = 1; i < (uint32_t)argc; i++) {
         if (strcmp(argv[i], "--attach") == 0)
             attach = 1;
+        if (strcmp(argv[i], "--runstop") == 0)
+            runstop = 1;
+    }
 
     printf("== mcd_tas smoke test ==\n");
-    printf("dll: %s\ncfg: %s\nmode: %s\n\n", dll, cfg ? cfg : "(default)",
-           attach ? "with core attach (--attach)" : "read-only");
+    printf("dll: %s\ncfg: %s\nmode: %s%s\n\n", dll, cfg ? cfg : "(default)",
+           attach ? "with core attach (--attach)" : "read-only",
+           runstop ? " + run/stop (--runstop)" : "");
 
     h = LoadLibraryA(dll);
     if (h == NULL) {
@@ -78,6 +84,7 @@ int main(int argc, char **argv)
     LOADFN(h, pfn_qry_cores,    f_cores,   "mcd_qry_cores_f");
     LOADFN(h, pfn_qry_error,    f_err,     "mcd_qry_error_info_f");
     LOADFN(h, pfn_run,          f_run,     "mcd_run_f");
+    LOADFN(h, pfn_stop,         f_stop,    "mcd_stop_f");
     LOADFN(h, pfn_open_core,    f_opencore,   "mcd_open_core_f");
     LOADFN(h, pfn_close_core,   f_closecore,  "mcd_close_core_f");
     LOADFN(h, pfn_qry_mem_spaces, f_memspaces, "mcd_qry_mem_spaces_f");
@@ -313,18 +320,108 @@ int main(int argc, char **argv)
                                st.info_str);
                 }
 
+                /* M16: run/stop verification (--runstop).  Changes the
+                 * target state; the sequence ends with the core halted
+                 * again (the state found at attach). */
+                if (runstop) {
+                    mcd_core_state_st st2;
+                    mcd_tx_st pctx;
+                    uint8_t  pcb[4];
+                    mcd_txlist_st ptl;
+                    uint32_t pc0 = 0, pc1 = 0;
+                    uint32_t state_before = MCD_CORE_STATE_UNKNOWN;
+
+                    /* helper read: DBGSR + PC through the read-only path
+                     * (independent evidence of the DBGSR write effect) */
+                    #define READ_WORD(addr_, out_)                                   \
+                        do {                                                      \
+                            memset(&pctx, 0, sizeof(pctx));                       \
+                            memset(pcb, 0, sizeof(pcb));                          \
+                            pctx.addr.mem_space_id = 1;                           \
+                            pctx.addr.address = (addr_);                          \
+                            pctx.access_type = MCD_TX_AT_R;                       \
+                            pctx.access_width = 4;                                \
+                            pctx.num_bytes = 4;                                   \
+                            pctx.data = pcb;                                      \
+                            ptl.tx = &pctx; ptl.num_tx = 1; ptl.num_tx_ok = 0;    \
+                            (out_) = 0;                                           \
+                            if (f_txlist(core, &ptl) == MCD_RET_ACT_NONE &&       \
+                                ptl.num_tx_ok == 1)                               \
+                                (out_) = (uint32_t)pcb[0] |                       \
+                                         ((uint32_t)pcb[1] << 8) |                \
+                                         ((uint32_t)pcb[2] << 16) |               \
+                                         ((uint32_t)pcb[3] << 24);                \
+                        } while (0)
+
+                    memset(&st2, 0, sizeof(st2));
+                    r = f_state(core, &st2);
+                    state_before = st2.state;
+                    printf("       [runstop] before: state 0x%x event 0x%x\n",
+                           (unsigned)st2.state, (unsigned)st2.event);
+
+                    r = f_run(core, FALSE);
+                    CHK(r == MCD_RET_ACT_NONE, "mcd_run_f (run)");
+                    Sleep(300);
+                    READ_WORD(0xF881FD00ull, pc0);
+                    printf("       [runstop] running: DBGSR=0x%08X\n",
+                           (unsigned)pc0);
+                    CHK((pc0 & 0x6u) == 0x0u, "DBGSR HALT=00b while running");
+
+                    memset(&st2, 0, sizeof(st2));
+                    r = f_state(core, &st2);
+                    CHK(r == MCD_RET_ACT_NONE &&
+                        st2.state == MCD_CORE_STATE_RUNNING,
+                        "state RUNNING after run");
+
+                    r = f_stop(core, FALSE);
+                    CHK(r == MCD_RET_ACT_NONE, "mcd_stop_f (stop)");
+                    READ_WORD(0xF881FD00ull, pc1);
+                    printf("       [runstop] stopped: DBGSR=0x%08X\n",
+                           (unsigned)pc1);
+                    CHK((pc1 & 0x6u) == 0x2u, "DBGSR HALT=01b while halted");
+
+                    memset(&st2, 0, sizeof(st2));
+                    r = f_state(core, &st2);
+                    CHK(r == MCD_RET_ACT_NONE &&
+                        st2.state == MCD_CORE_STATE_DEBUG,
+                        "state DEBUG after stop");
+                    CHK(st2.event == MCD_CORE_EVENT_STOPPED,
+                        "one-shot STOPPED event after stop");
+                    printf("       [runstop] after: state 0x%x event 0x%x\n",
+                           (unsigned)st2.state, (unsigned)st2.event);
+
+                    memset(&st2, 0, sizeof(st2));
+                    r = f_state(core, &st2);
+                    CHK(r == MCD_RET_ACT_NONE &&
+                        st2.event == MCD_CORE_EVENT_NONE,
+                        "STOPPED event cleared on next poll");
+
+                    /* safety invariant: restore the state found at entry */
+                    if (state_before == MCD_CORE_STATE_RUNNING) {
+                        r = f_run(core, FALSE);
+                        CHK(r == MCD_RET_ACT_NONE,
+                            "restore RUNNING (state found at entry)");
+                        printf("       [runstop] restored: RUNNING (as found)\n");
+                    } else {
+                        printf("       [runstop] restored: DEBUG (as found)\n");
+                    }
+
+                    #undef READ_WORD
+                }
+
                 r = f_closecore(core);
                 CHK(r == MCD_RET_ACT_NONE, "mcd_close_core_f");
             }
         }
 
-        /* 7. stub path: mcd_run_f must report "not implemented" */
+        /* 7. invalid-handle path: mcd_run_f(NULL) must report an error
+         * (mcd_run_f itself is implemented since M16; see --runstop) */
         {
             mcd_error_info_st ei;
             r = f_run(NULL, TRUE);
-            CHK(r == MCD_RET_ACT_HANDLE_ERROR, "stub mcd_run_f returns HANDLE_ERROR");
+            CHK(r == MCD_RET_ACT_HANDLE_ERROR, "mcd_run_f(NULL) returns HANDLE_ERROR");
             f_err(NULL, &ei);
-            printf("       stub error 0x%08x: %s\n", (unsigned)ei.error_code, ei.error_str);
+            printf("       error 0x%08x: %s\n", (unsigned)ei.error_code, ei.error_str);
         }
 
         /* 8. close server + exit */

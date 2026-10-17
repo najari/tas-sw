@@ -4,12 +4,12 @@ MCD(Multi-Core Debug) API v1.1 **"SPRINT Release"** 구현 DLL 프로토타입.
 백엔드는 [TAS](https://github.com/najari/tas-sw) 서버(TCP 24817) — 즉, `mcdxdas.dll`(DAS 백엔드)의
 자매품으로 "MCD API를 TAS로" 제공하는 실험 구현입니다.
 
-- 상태: **M12 완료 (2026-10-18)** — 원본 `mcd_basic_client.exe`에 drop-in(`mcdxdas.dll` 자리)으로
-  **GUI 전 구간 검증 + 교차 캘리브레이션 완료**: 열거·열기(M1~M3), State/IP·DBGSR(M4~M5),
-  오류 표시(M6), reg_map(M7), mem_spaces/스텁(M8), 열거 교차(M9), 리셋 클래스(M10),
-  Run 실관찰(M11), **GUI Write 검증(M12 — LMU 스크래치 셀 쓰기/복원·원본 파리티)** —
-  아래 "M3~M12 검증" 참조. (M2 애태치: 초기 DEVICE_CONNECT 실패는 USB 허브 경유 문제 — 본체 직결로 해결)
-- 원칙: **읽기 전용** — 타깃 상태 변경(Run/Stop/Step/Reset)은 의도적으로 미구현(스텁)
+- 상태: **M16 완료 (2026-10-18)** — M12까지 원본 `mcd_basic_client.exe`에 drop-in(`mcdxdas.dll` 자리)으로
+  **GUI 전 구간 검증 + 교차 캘리브레이션 완료**(열거·열기 M1~M3, State/IP·DBGSR M4~M5, 오류 표시 M6,
+  reg_map M7, mem_spaces/스텁 M8, 열거 교차 M9, 리셋 클래스 M10, Run 실관찰 M11, GUI Write M12)에 이어
+  **M16: run/stop 실구현·라이브 검증**(DBGSR 쓰기 경로, 상태 복원 확인 — 아래 M16 섹션).
+  (M2 애태치: 초기 DEVICE_CONNECT 실패는 USB 허브 경유 문제 — 본체 직결로 해결)
+- 원칙: **읽기 전용 기본** — run/stop은 M16에서 구현(사용 승인 하 상태 변경), Step/Reset/트리거/CHL은 미구현(스텁)
 - 소스 언어: C++ (SPRINT `mcd_api.h` 헤더가 `extern "C"` 비가드 선언이라 C에서는 컴파일 불가)
 
 ## 구성
@@ -61,8 +61,35 @@ build\Release\tas_probe.exe [host] [port]
 `mcd_open_core_f` `mcd_close_core_f` `mcd_qry_mem_spaces_f` `mcd_execute_txlist_f`
 `mcd_qry_state_f` `mcd_qry_max_payload_size_f`
 
-나머지 37개는 `MCD_RET_ACT_HANDLE_ERROR` + `MCD_ERR_FN_UNIMPLEMENTED` + 함수명 메시지를 반환합니다
-(`mcd_qry_error_info_f`로 조회 가능).
+나머지 16개는 `MCD_RET_ACT_HANDLE_ERROR` + `MCD_ERR_FN_UNIMPLEMENTED` + 함수명 메시지를 반환합니다
+(`mcd_qry_error_info_f`로 조회 가능): 트리거 4종(create/qry/remove/qry_state),
+`run_until`·`step`·`rst`·`execute_command`, CHL 5종(open/send/receive/reset/close),
+`set_trace_state`·`read_trace`·`qry_input_handle`. (run/stop은 **M16에서 실구현** —
+`remove/activate_trig_set`은 M16b에서 성공 no-op — 아래 M16 섹션)
+
+## M16 구현 — run/stop (2026-10-18)
+
+- `mcd_run_f` / `mcd_stop_f` 실구현: **DBGSR(0xF881FD00) 쓰기** 경로(PL0 WR32)
+  - run = `0x00000004` (HALT[2:1]=10b: 해제 — CCL `startCpu`의 `mcdsrl_write(DBGSR, 0x0004)`와 동일)
+  - stop = `0x00000006` (HALT[2:1]=11b: 설정, DE=1 필요) — TC1.6 UM Vol.1 §12.9
+  - 상태는 내부 모델(원본 파리티 — DBGSR 재판독 없음): run→RUNNING, stop→DEBUG + **1회성 event=0x10(STOPPED)**
+  - `global!=0`이면 애태치된 모든 코어 슬롯에 적용(그룹 시맨틱)
+- 라이브 검증(`mcd_tas_smoke.exe --attach --runstop`): run→`DBGSR=0x00000001`(HALT=00b) ·
+  stop→`DBGSR=0x00000003`(HALT=01b) **독립 재판독 확인**, 상태/이벤트 시퀀스 전 항목 ok,
+  **입력 상태 복원(DEBUG)** · 실패 0 — 증거: `smoke_runstop_run.txt`
+- **M16b — GUI 검증(원본 `mcd_basic_client.exe` + 우리 DLL)**:
+  - Run 클릭 시퀀스 실측: `remove_trig_set` → `activate_trig_set` → `run`
+    → 스텁이던 `remove/activate_trig_set`을 **성공 no-op**으로 구현(트리거 세트는 항상 비어 있음 —
+    `create_trig` 불가 — 이므로 정합). Run/Stop 버튼 전 구간 동작 확인:
+    Stop(Running→Debug, IP 고정) · Run(Debug→Running, IP 진행) · 최종 Debug 복원
+  - 스크린샷: `gui_test\m16_main3.png`(Running) · `m16_stop1.png`(Debug) · `m16_run2.png`(Running) ·
+    `m16_final.png`(Debug) — DLL 로그: `drop_in\client_stderr33.log`/`34.log`
+  - 관찰: 상태 전환 직후 첫 폴링에서 **1회성 읽기 실패**(PL0 0x8D→0x98)가 표시될 수 있음 —
+    M6에서 원본과 함께 캘리브레이션한 것과 동일한 표시·자동 복구
+- 참고: EVTSRC 차이(원본 stop=TR0EVT `0x10xx` vs DBGSR 쓰기=EXEVT `0x000x`) — 상태 판정과 무관
+- 미구현 유지: `mcd_rst_f`(DEVICE_CONNECT 옵션 기반 리셋 — 미드세션 메커니즘 캘리브레이션 필요),
+  `mcd_step_f`, `mcd_run_until_f`
+- 배포: `drop_in\mcdxdas.dll` = SHA256 `9EA500C63676454B…` (M16b 기준, 전문은 파일 참조)
 
 ### 세션 / 애태치 (`mcd_open_core_f`)
 

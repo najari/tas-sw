@@ -65,6 +65,7 @@ typedef struct {
     int                  st_valid;           /* 1 = st_dbgsr/st_state set */
     uint32_t             st_dbgsr;           /* raw DBGSR value           */
     mcd_core_state_et    st_state;           /* state derived from DBGSR  */
+    mcd_core_event_et    st_event;           /* one-shot event for next qry_state (M16) */
     mcd_core_st          core_obj;
     mcd_core_con_info_st core_ci;
 } mcd_core_slot_t;
@@ -965,6 +966,7 @@ static mcd_error_code_et open_tas_session(mcd_core_slot_t *cs,
     cs->st_valid = 0;
     cs->st_dbgsr = 0;
     cs->st_state = MCD_CORE_STATE_UNKNOWN;
+    cs->st_event = MCD_CORE_EVENT_NONE;
     cs->attached = 1;
     dbg("mcd_tas: session attached to '%s' (device 0x%08X, feat 0x%04x, max_rw %u)",
         g.targets[tgt].identifier, (unsigned)cs->con.device_type,
@@ -1641,16 +1643,43 @@ mcd_return_et mcd_qry_trig_state_f(const mcd_core_st *core, uint32_t trig_id,
     STUB_ENTER("mcd_qry_trig_state_f")
 }
 
+/* M16b: no-op success.  The prototype cannot create triggers
+ * (mcd_create_trig_f reports unimplemented), so the trigger set is always
+ * empty; clearing/activating it is a successful no-op.  The reference
+ * client's Run sequence calls mcd_remove_trig_set_f before mcd_run_f
+ * (observed in the GUI: Run was blocked while this was a stub). */
 mcd_return_et mcd_activate_trig_set_f(const mcd_core_st *core)
 {
-    (void)core;
-    STUB_ENTER("mcd_activate_trig_set_f")
+    mcd_return_et r = MCD_RET_ACT_NONE;
+
+    mcd_lock();
+    err_clear();
+
+    if (core_slot_from(core) == NULL) {
+        r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
+                    "mcd_activate_trig_set_f: unknown core handle");
+    } else {
+        dbg("mcd_tas: CALL activate_trig_set (empty set: no-op)");
+    }
+    mcd_unlock();
+    return r;
 }
 
 mcd_return_et mcd_remove_trig_set_f(const mcd_core_st *core)
 {
-    (void)core;
-    STUB_ENTER("mcd_remove_trig_set_f")
+    mcd_return_et r = MCD_RET_ACT_NONE;
+
+    mcd_lock();
+    err_clear();
+
+    if (core_slot_from(core) == NULL) {
+        r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
+                    "mcd_remove_trig_set_f: unknown core handle");
+    } else {
+        dbg("mcd_tas: CALL remove_trig_set (empty set: no-op)");
+    }
+    mcd_unlock();
+    return r;
 }
 
 mcd_return_et mcd_qry_trig_set_f(const mcd_core_st *core, uint32_t start_index,
@@ -1920,16 +1949,106 @@ fail:
     return r;
 }
 
+/* ------------------------------------------------------------------ */
+/* M16: run control (mcd_run_f / mcd_stop_f)                           */
+/*                                                                     */
+/* Mechanism: DBGSR (0xF881FD00) write through the normal PL0 path.    */
+/* TC1.6 UM Vol.1 sec.12.9: the HALT[2:1] write codes are 10b = clear  */
+/* halt (run) and 11b = set halt (requires DE=1).  The run write       */
+/* 0x00000004 matches the reference CPU start sequence used by the     */
+/* CCL recorder (mcdsrl_write(DBGSR, 0x0004)).  The reference          */
+/* mcdxdas.dll reaches its own vtable methods for run/stop             */
+/* (mcd_run_f 0x180006400 -> vtbl +0x148, mcd_stop_f 0x1800067F0 ->    */
+/* vtbl +0x168); the wire effect on this target is the same DBGSR      */
+/* change, and like the reference we track the new state internally    */
+/* instead of re-reading DBGSR.  Reference parity notes (M11):         */
+/*   run  -> state RUNNING (no event);                                */
+/*   stop -> state DEBUG, one-shot event MCD_CORE_EVENT_STOPPED(0x10)  */
+/*           on the next qry_state.                                    */
+/* ------------------------------------------------------------------ */
+
+#define MCD_TAS_DBGSR_WR_RUN   0x00000004u  /* HALT[2:1]=10b: clear halt */
+#define MCD_TAS_DBGSR_WR_HALT  0x00000006u  /* HALT[2:1]=11b: set halt   */
+
+static mcd_return_et dbgsr_write(mcd_core_slot_t *cs, uint32_t value,
+                                 const char *fn)
+{
+    tas_rw_item it;
+    uint8_t pe = 0;
+    int rc;
+
+    memset(&it, 0, sizeof(it));
+    it.addr_map = TAS_AM0;
+    it.addr = MCD_TAS_DBGSR_ADDR;
+    it.num_bytes = 4;
+    it.is_write = 1;
+    it.data = (uint8_t *)&value;
+    rc = tas_rw_exec(&cs->conn, &it, 1, cs->con.pl0_max_num_rw, &pe);
+    if (rc == 0 && it.ok)
+        return MCD_RET_ACT_NONE;
+
+    return err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_TXLIST_TX,
+                   "%s: DBGSR write failed (rc %d, pl0_err 0x%02x)", fn, rc,
+                   (unsigned)pe);
+}
+
+static mcd_return_et run_stop_common(const mcd_core_st *core,
+                                     mcd_bool_t global, int do_run)
+{
+    mcd_return_et r = MCD_RET_ACT_NONE;
+    mcd_core_slot_t *cs;
+    const char *fn = do_run ? "mcd_run_f" : "mcd_stop_f";
+    int k;
+
+    mcd_lock();
+    err_clear();
+
+    cs = core_slot_from(core);
+    if (cs == NULL) {
+        r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
+                    "%s: unknown core handle", fn);
+    } else if (!cs->attached) {
+        r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_CONNECTION,
+                    "%s: no TAS device session", fn);
+    } else {
+        /* The addressed core always; with global != 0 also every other
+         * attached core slot (MCD 'global' group semantics). */
+        for (k = 0; k < MCD_MAX_CORE_SLOTS; k++) {
+            mcd_core_slot_t *t = &g.cores[k];
+            if (!t->used || !t->attached)
+                continue;
+            if (t != cs && !global)
+                continue;
+            r = dbgsr_write(t, do_run ? MCD_TAS_DBGSR_WR_RUN
+                                      : MCD_TAS_DBGSR_WR_HALT, fn);
+            if (r != MCD_RET_ACT_NONE)
+                break;
+            /* Internal model (reference parity: DBGSR is not re-read
+             * after run/stop). */
+            t->st_valid = 1;
+            t->st_dbgsr = do_run ? 0x00001001u : 0x00001003u;
+            t->st_state = do_run ? MCD_CORE_STATE_RUNNING
+                                 : MCD_CORE_STATE_DEBUG;
+            if (!do_run)
+                t->st_event = MCD_CORE_EVENT_STOPPED;   /* one-shot */
+            dbg("mcd_tas: %s: DBGSR <- 0x%08X -> %s (core %d%s)",
+                fn, do_run ? MCD_TAS_DBGSR_WR_RUN : MCD_TAS_DBGSR_WR_HALT,
+                do_run ? "RUNNING" : "DEBUG", t->core_index,
+                global ? ", global" : "");
+        }
+    }
+    mcd_unlock();
+    return r;
+}
+
 mcd_return_et mcd_run_f(const mcd_core_st *core, mcd_bool_t global)
 {
-    (void)core; (void)global;
-    STUB_ENTER("mcd_run_f")
+    return run_stop_common(core, global, 1);
 }
 
 mcd_return_et mcd_stop_f(const mcd_core_st *core, mcd_bool_t global)
 {
-    (void)core; (void)global;
-    STUB_ENTER("mcd_stop_f")
+    return run_stop_common(core, global, 0);
 }
 
 mcd_return_et mcd_run_until_f(const mcd_core_st *core, mcd_bool_t global,
@@ -2071,9 +2190,14 @@ mcd_return_et mcd_qry_state_f(const mcd_core_st *core, mcd_core_state_st *state)
         memset(state, 0, sizeof(*state));
         if (cs->st_valid) {
             state->state = cs->st_state;
-            /* M7 parity with the reference mcdxdas.dll (observed via the
-             * forwarding proxy): event/trig_id/stop_str/info_str stay
-             * empty - only the state field carries the halt information. */
+            /* M16: one-shot STOPPED event after mcd_stop_f (reference
+             * parity, M11: event=0x10 on the first qry_state after a
+             * stop, cleared on the following poll).  In steady state
+             * event/trig_id/stop_str/info_str stay empty (M7 parity). */
+            if (cs->st_event != MCD_CORE_EVENT_NONE) {
+                state->event = cs->st_event;
+                cs->st_event = MCD_CORE_EVENT_NONE;
+            }
             dbg("mcd_tas: CALL qry_state -> %s (dbgsr 0x%08X)",
                 (cs->st_state == MCD_CORE_STATE_DEBUG)   ? "DEBUG" :
                 (cs->st_state == MCD_CORE_STATE_RUNNING) ? "RUNNING"
