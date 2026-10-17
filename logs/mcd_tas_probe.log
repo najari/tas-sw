@@ -1,0 +1,20 @@
+== mcd_tas protocol probe (read-only) ==
+server: localhost:24817
+
+  [ok]   SERVER_CONNECT: 'TasServer' ver 0.2 protos 0x00000002 date 'Apr 30 2026'
+  [ok]   GET_TARGETS: 1 target(s)
+           [0] 'DAS JTAG AURDUINO 46YPEADW' devtype 0x00000000 phys 1 nclient 0
+  [ok]   SESSION_START 'DAS JTAG AURDUINO 46YPEADW'
+           max pl2 rq 1060 rsp 1040, devtype 0x00000000, max_rw 32,
+           rw_mode_mask 0x0000 addr_map_mask 0x8000, hash NoUid (0x00000000),
+           identifier 'DAS JTAG AURDUINO 46YPEADW'
+           device_id: 00000000 00000000 00000000 00000000
+  [ok]   PING (devtype 0x00000000)
+  [ok]   AM15 RD32 @0x000C0100 (ACC_HW_FREQUENCY)
+           value = 400000 Hz
+  [ok]   AM15 RDBLK @0xD000 (104 bytes)
+           block devtype = 0x00000000, 'TriCore-Family' present: no
+  [ok]   AM15 RDBLK @0x8000 (168 bytes)
+           content: DAS JTAG AURDUINO...............................................Infineon...........
+
+== PROBE OK (0 failure(s)) ==

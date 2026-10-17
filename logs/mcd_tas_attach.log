@@ -1,0 +1,32 @@
+mcd_tas: initialized (client requested 1.1 'SPRINT Release')
+mcd_tas: qry_servers(localhost): 1 server 'TasServer' acc_hw 'DAS JTAG AURDUINO 46YPEADW'
+mcd_tas: server 'TasServer' opened at localhost:24817 (1 targets)
+mcd_tas: server closed
+== mcd_tas smoke test ==
+dll: .\build\Release\mcd_tas.dll
+cfg: (default)
+mode: with core attach (--attach)
+
+all exports resolved
+
+  [ok]   mcd_initialize_f
+       impl: api 1.1 'SPRINT Release', vendor 'mcd_tas prototype', build 0.2.0, date Oct 17 2026
+  [ok]   mcd_qry_servers_f (count)
+       running servers on localhost: 1
+  [ok]   mcd_qry_servers_f (fetch)
+       server[0]: 'TasServer' acc_hw 'DAS JTAG AURDUINO 46YPEADW' system_instance ''
+  [ok]   mcd_open_server_f
+  [ok]   mcd_qry_systems_f
+       system 'Real HW' instance '' host localhost:24817
+  [ok]   mcd_qry_devices_f
+       device[0]: acc_hw 'DAS JTAG AURDUINO 46YPEADW' device 'Unknown device' type 0x00000000 id 0x00000000
+  [ok]   mcd_qry_cores_f
+       core[0]: 'Core 0' core_type 44 core_id 0x00000000 (acc_hw 'DAS JTAG AURDUINO 46YPEADW')
+  NOTE: --attach performs TAS DEVICE_CONNECT (JTAG hot attach, no reset/halt)
+  [FAIL] mcd_open_core_f (session + attach)
+       error 0x00000200: mcd_open_core_f: TAS DEVICE_CONNECT rejected (tas_err=0x20) (server reports no identified device)
+  [ok]   stub mcd_run_f returns HANDLE_ERROR
+       stub error 0x00000100: mcd_run_f: not implemented by mcd_tas prototype
+  [ok]   mcd_close_server_f
+
+== SMOKE FAILED (1 failure(s)) ==
