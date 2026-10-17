@@ -1,0 +1,11 @@
+== our mcd_tas.dll (drop_in/client_stderr18.log) ==
+mcd_tas: CALL qry_reg_map group=0 start=0 cap=0
+mcd_tas: CALL qry_reg_map group=0 start=0 cap=1
+mcd_tas: CALL qry_reg_map group=0 start=1 cap=1
+mcd_tas: CALL qry_reg_map group=0 start=2 cap=1
+mcd_tas: tx[0] R space=0 addr=0xF881FE08 bytes=4 width=0
+[rw] rq cnt 65477 frame_items 1: 01 B0 FF 00 C5 FF 01 00 00 15 81 F8 00 25 08 FE 00 B1 01 00
+[rw] rsp 16 bytes: 00 B0 8C 08 01 25 01 80 20 00 00 A0 00 B1 C5 FF
+mcd_tas: tx[0] R space=0 addr=0xF0000480 bytes=4 width=0
+[rw] rq cnt 194 frame_items 1: 01 B0 FF 00 C2 00 01 00 00 15 00 F0 00 25 80 04 00 B1 01 00
+[rw] rsp 16 bytes: 00 B0 8C 08 01 25 01 80 01 00 08 00 00 B1 C2 00

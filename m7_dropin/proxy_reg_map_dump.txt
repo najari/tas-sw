@@ -1,0 +1,51 @@
+== original mcdxdas.dll (via forwarding proxy) - register map full dump ==
+- qry_reg_map -> 0 num=40
+[FULL DUMP] registering 40 entries (group 0)
+    reg[0]: name='PCXI' group=0 space=0 addr=0xF881FE00 size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[1]: name='PSW' group=0 space=0 addr=0xF881FE04 size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[2]: name='PC' group=0 space=0 addr=0xF881FE08 size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=1
+    reg[3]: name='BIV' group=0 space=0 addr=0xF881FE20 size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[4]: name='BTV' group=0 space=0 addr=0xF881FE24 size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[5]: name='ISP' group=0 space=0 addr=0xF881FE28 size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[6]: name='ICR' group=0 space=0 addr=0xF881FE2C size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[7]: name='FCX' group=0 space=0 addr=0xF881FE38 size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[8]: name='D0' group=0 space=0 addr=0xF881FF00 size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[9]: name='D1' group=0 space=0 addr=0xF881FF04 size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[10]: name='D2' group=0 space=0 addr=0xF881FF08 size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[11]: name='D3' group=0 space=0 addr=0xF881FF0C size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[12]: name='D4' group=0 space=0 addr=0xF881FF10 size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[13]: name='D5' group=0 space=0 addr=0xF881FF14 size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[14]: name='D6' group=0 space=0 addr=0xF881FF18 size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[15]: name='D7' group=0 space=0 addr=0xF881FF1C size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[16]: name='D8' group=0 space=0 addr=0xF881FF20 size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[17]: name='D9' group=0 space=0 addr=0xF881FF24 size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[18]: name='D10' group=0 space=0 addr=0xF881FF28 size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[19]: name='D11' group=0 space=0 addr=0xF881FF2C size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[20]: name='D12' group=0 space=0 addr=0xF881FF30 size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[21]: name='D13' group=0 space=0 addr=0xF881FF34 size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[22]: name='D14' group=0 space=0 addr=0xF881FF38 size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[23]: name='D15' group=0 space=0 addr=0xF881FF3C size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[24]: name='A0' group=0 space=0 addr=0xF881FF80 size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[25]: name='A1' group=0 space=0 addr=0xF881FF84 size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[26]: name='A2' group=0 space=0 addr=0xF881FF88 size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[27]: name='A3' group=0 space=0 addr=0xF881FF8C size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[28]: name='A4' group=0 space=0 addr=0xF881FF90 size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[29]: name='A5' group=0 space=0 addr=0xF881FF94 size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[30]: name='A6' group=0 space=0 addr=0xF881FF98 size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[31]: name='A7' group=0 space=0 addr=0xF881FF9C size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[32]: name='A8' group=0 space=0 addr=0xF881FFA0 size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[33]: name='A9' group=0 space=0 addr=0xF881FFA4 size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[34]: name='A10' group=0 space=0 addr=0xF881FFA8 size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[35]: name='A11' group=0 space=0 addr=0xF881FFAC size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[36]: name='A12' group=0 space=0 addr=0xF881FFB0 size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[37]: name='A13' group=0 space=0 addr=0xF881FFB4 size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[38]: name='A14' group=0 space=0 addr=0xF881FFB8 size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+    reg[39]: name='A15' group=0 space=0 addr=0xF881FFBC size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
+[FULL DUMP] qry_reg_groups cap=0 -> 0 num=1
+    grp[0]: id=0 name='CPU Registers' n=40
++ qry_reg_map: group=0 start=0 cap=1
+    reg[0]: name='PCXI' group=0 space=0 addr=0xF881FE00 size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
++ qry_reg_map: group=0 start=1 cap=1
+    reg[0]: name='PSW' group=0 space=0 addr=0xF881FE04 size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=0
++ qry_reg_map: group=0 start=2 cap=1
+    reg[0]: name='PC' group=0 space=0 addr=0xF881FE08 size=32 type=0 hw_thread=0 rmask=0x2 wmask=0x2 side_r=0 side_w=1

@@ -19,6 +19,7 @@ TasServer(24817) 백엔드로** 구동하는 프로토타입 DLL(`mcd_tas.dll`)�
 | (참고) | TC27x 디버그 레지스터 규명 — PC `0xF881FE08`·DBGSR `0xF881FD00` (해독·라이브 검증) | 완료(§3-G) — [TC27X_DEBUG_REGISTERS.md](TC27X_DEBUG_REGISTERS.md) |
 | M5 | `qry_state` 실상태 — DBGSR 기반 도출 (세션 1회 판독·캐시) | **완료·검증(§3-H)** — `State: Debug` 파리티 · 4.6 Hz · 실패 0 |
 | M6 | 읽기 실패 오류 표시 캘리브레이션 — (ret, err) 조합이 이미 정확함을 원본 프록시로 확인; error string을 원본 정본 문구로 정합 | **완료·검증(§3-I)** — `FAIL: Read failure for a transaction of the txlist` · 원본 직접 실행에서도 표시 동작 동일(모달 재현 불가) |
+| M7 | reg_map/reg_groups 원본 교차 캘리브레이션 — 원본 "CPU Registers" 40개 전량 재현 + qry_state 필드 정합 | **완료·검증(§3-J)** — 호출 패턴 일치(`cap=0→40` · `start=0/1/2` · `space=0` PC 폴링) |
 
 ## 1. 구현 범위
 
@@ -190,6 +191,24 @@ DBGSR(`0xF881FD00`)을 1회 RD32(읽기 전용)로 읽어 해독·캐시(세션 
 - 증거: [m6_dropin/](../m6_dropin/) (proxy_log_excerpt.txt · wire_compare.txt · ours/orig screenshots)
 - 상세: `M6_ERROR_DISPLAY_CALIBRATION.md` (tas_server_analysis, 로컬)
 
+### J. M7 — reg_map/reg_groups 원본 교차 캘리브레이션 (2026-10-18)
+
+프록시 확장(reg_map 인자·엔트리 덤프 + 첫 count 질의에서 **원샷 전체 덤프** + 그룹 프로브 +
+trig_set_state 덤프)으로 원본 `mcdxdas.dll`의 레지스터 DB를 전량 관찰·재현.
+
+- 원본: 그룹 `id=0 "CPU Registers"` **40개** — `PCXI/PSW/PC/BIV/BTV/ISP/ICR/FCX` +
+  `D0–D15`(0xF881FF00..) + `A0–A15`(0xF881FF80..); 공통 `space=0`·size=32·type=SIMPLE·
+  `rmask=wmask=0x2`, **`PC`만 side_w=1**.
+- 클라이언트 패턴: `qry_reg_map(group=0, cap=0)` → 40; `start=0/1/2`를 1개씩(`cap=1`) 가져와
+  `PC`를 찾으면 중단 → 이후 `RD32 space=0 @0xF881FE08`만 폴링.
+- 부수 정합: `trig_set_state`는 원본도 전 필드 0(스텁과 동일) · `qry_state`는 원본이
+  `stop_str=''`/`info_str=''`(M5에서 채웠던 필드를 공백으로 정정 — state만 실값).
+- 수정: `g_reg_desc[40]` 테이블 + "CPU Registers" 그룹 + `qry_reg_map` count/fetch 서빙.
+- 검증(`client_stderr18.log`): 호출 패턴이 원본과 일치, `State: Debug`/`IP: 0xA0000020`,
+  성공 Read `0xF0000480 → 0x00080001` 회귀.
+- 증거: [m7_dropin/](../m7_dropin/) (proxy_reg_map_dump.txt · our_client_log_excerpt.txt · 화면 2종)
+- 상세: `M7_REG_MAP_CROSS_CALIBRATION.md` (tas_server_analysis, 로컬)
+
 ## 4. 구현 메모 (정본 근거)
 
 - **프레임 빌더** (`tas_pkt_handler_rw.cpp` 규칙, §8 실측과 일치):
@@ -214,8 +233,10 @@ DBGSR(`0xF881FD00`)을 1회 RD32(읽기 전용)로 읽어 해독·캐시(세션 
 - **M5(완료, 2026-10-18)**: `qry_state` 실상태(§3-H) — DBGSR 세션 1회 판독·캐시, HALT→DEBUG/RUNNING.
 - **M6(완료, 2026-10-18)**: 읽기 실패 오류 표시 캘리브레이션(§3-I) — 원본 프록시로 (ret, err) 조합
   이미 정확함을 확인, error string을 원본 정본 문구("Read failure for a transaction of the txlist")로 정합.
-- **다음(M6+)**: Run 실관찰 캘리브레이션(승인 필요), 매핑 캘리브레이션, (승인 후) Write 검증,
-  reg groups/trig 확장.
+- **M7(완료, 2026-10-18)**: reg_map/reg_groups 교차 캘리브레이션(§3-J) — 원본 "CPU Registers"
+  40개 전량 재현 + qry_state 필드 정합(원본은 state만 실값).
+- **다음(M7+)**: Run 실관찰 캘리브레이션(승인 필요), mem_spaces/blocks 교차(선택, 클라이언트 미호출),
+  (승인 후) Write 검증.
 
 ## 부록. 산출물
 
@@ -226,6 +247,7 @@ DBGSR(`0xF881FD00`)을 1회 RD32(읽기 전용)로 읽어 해독·캐시(세션 
 - M4+ 디버그 레지스터 검증 캡처·발췌: [tc27x_dbg_regs/](../tc27x_dbg_regs/) (dbgsr_read · pc_read · cpuid_read · log_excerpt.txt)
 - M5 실상태 검증 캡처·발췌: [m5_dropin/](../m5_dropin/) (state_main · read_regression · log_excerpt.txt)
 - M6 오류 표시 캘리브레이션 캡처·발췌: [m6_dropin/](../m6_dropin/) (proxy_log_excerpt.txt · wire_compare.txt · ours_fail/ours_success · orig_proxy_no_modal/orig_direct_no_modal)
+- M7 reg_map 교차 캘리브레이션 캡처·발췌: [m7_dropin/](../m7_dropin/) (proxy_reg_map_dump.txt · our_client_log_excerpt.txt · regs_main/read_regression)
 - 정상 시절 vs 현재 대조(§5 = M3 재검증): [MCD_BASIC_VS_CURRENT_COMPARE.md](MCD_BASIC_VS_CURRENT_COMPARE.md)
 - 캡처 근거(참조 시퀀스): [mcds/](../mcds/) conn 3341(애태치+AM0), conn 4085(MCDS 폴링) — 해설 §8
 - 도구 분석(대응 UI/동작): [MCD_TOOLS_ANALYSIS.md](MCD_TOOLS_ANALYSIS.md)
