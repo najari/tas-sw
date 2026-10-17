@@ -20,6 +20,7 @@ TasServer(24817) 백엔드로** 구동하는 프로토타입 DLL(`mcd_tas.dll`)�
 | M5 | `qry_state` 실상태 — DBGSR 기반 도출 (세션 1회 판독·캐시) | **완료·검증(§3-H)** — `State: Debug` 파리티 · 4.6 Hz · 실패 0 |
 | M6 | 읽기 실패 오류 표시 캘리브레이션 — (ret, err) 조합이 이미 정확함을 원본 프록시로 확인; error string을 원본 정본 문구로 정합 | **완료·검증(§3-I)** — `FAIL: Read failure for a transaction of the txlist` · 원본 직접 실행에서도 표시 동작 동일(모달 재현 불가) |
 | M7 | reg_map/reg_groups 원본 교차 캘리브레이션 — 원본 "CPU Registers" 40개 전량 재현 + qry_state 필드 정합 | **완료·검증(§3-J)** — 호출 패턴 일치(`cap=0→40` · `start=0/1/2` · `space=0` PC 폴링) |
+| M8 | mem_spaces 교차 + mem_blocks/스텁 정본 문구 정합 | **완료·검증(§3-K)** — `"Code and Data"`(id 0)·opts 0x200 · mem_blocks 미구현(0x100) · SMOKE OK |
 
 ## 1. 구현 범위
 
@@ -209,6 +210,20 @@ trig_set_state 덤프)으로 원본 `mcdxdas.dll`의 레지스터 DB를 전량 �
 - 증거: [m7_dropin/](../m7_dropin/) (proxy_reg_map_dump.txt · our_client_log_excerpt.txt · 화면 2종)
 - 상세: `M7_REG_MAP_CROSS_CALIBRATION.md` (tas_server_analysis, 로컬)
 
+### K. M8 — mem_spaces 교차 + mem_blocks/스텁 정본 문구 정합 (2026-10-18)
+
+- 원본 관찰(프록시 원샷 프로브): mem_spaces = **`id=0 "Code and Data"`** · `type=0` · mau=8 ·
+  LITTLE · `0..0xFFFFFFFF` · **`opts=0x200`**(`MCD_TX_OPT_ATOMIC_WITH_NEXT`) ·
+  mem_blocks = **미구현**(`HANDLE_ERROR` + `0x100 "Function is not implemented"`).
+- 수정: mem_spaces 원본 값 정합(id 1→0·이름·type·opts) · mem_blocks → 원본과 동일한 미구현 오류 ·
+  **스텁 문구 정본화**("Function is not implemented") · txlist space 0 + legacy 1 허용.
+- 검증(smoke `--attach`, [m8_dropin/](../m8_dropin/) smoke_run.txt):
+  `mem space id 0 'Code and Data' ... opts 0x200` ·
+  `mem blocks rc 3: code 0x100 'Function is not implemented'` · **SMOKE OK (0 failures)** ·
+  GUI 회귀 `State: Debug`/`0xF0000480→0x00080001`.
+- 증거: [m8_dropin/](../m8_dropin/) (proxy_mem_dump.txt · smoke_run.txt · 화면 2종)
+- 상세: `M8_MEM_SPACES_STUB_PARITY.md` (tas_server_analysis, 로컬)
+
 ## 4. 구현 메모 (정본 근거)
 
 - **프레임 빌더** (`tas_pkt_handler_rw.cpp` 규칙, §8 실측과 일치):
@@ -235,8 +250,9 @@ trig_set_state 덤프)으로 원본 `mcdxdas.dll`의 레지스터 DB를 전량 �
   이미 정확함을 확인, error string을 원본 정본 문구("Read failure for a transaction of the txlist")로 정합.
 - **M7(완료, 2026-10-18)**: reg_map/reg_groups 교차 캘리브레이션(§3-J) — 원본 "CPU Registers"
   40개 전량 재현 + qry_state 필드 정합(원본은 state만 실값).
-- **다음(M7+)**: Run 실관찰 캘리브레이션(승인 필요), mem_spaces/blocks 교차(선택, 클라이언트 미호출),
-  (승인 후) Write 검증.
+- **M8(완료, 2026-10-18)**: mem_spaces 교차 + mem_blocks/스텁 정본 문구 정합(§3-K) —
+  "Code and Data"(id 0)·opts 0x200 · mem_blocks 미구현(0x100).
+- **다음(M8+)**: Run 실관찰 캘리브레이션(승인 필요), (승인 후) Write 검증.
 
 ## 부록. 산출물
 
@@ -248,6 +264,7 @@ trig_set_state 덤프)으로 원본 `mcdxdas.dll`의 레지스터 DB를 전량 �
 - M5 실상태 검증 캡처·발췌: [m5_dropin/](../m5_dropin/) (state_main · read_regression · log_excerpt.txt)
 - M6 오류 표시 캘리브레이션 캡처·발췌: [m6_dropin/](../m6_dropin/) (proxy_log_excerpt.txt · wire_compare.txt · ours_fail/ours_success · orig_proxy_no_modal/orig_direct_no_modal)
 - M7 reg_map 교차 캘리브레이션 캡처·발췌: [m7_dropin/](../m7_dropin/) (proxy_reg_map_dump.txt · our_client_log_excerpt.txt · regs_main/read_regression)
+- M8 mem_spaces/스텁 정합 캡처·발췌: [m8_dropin/](../m8_dropin/) (proxy_mem_dump.txt · smoke_run.txt · main/read_regression)
 - 정상 시절 vs 현재 대조(§5 = M3 재검증): [MCD_BASIC_VS_CURRENT_COMPARE.md](MCD_BASIC_VS_CURRENT_COMPARE.md)
 - 캡처 근거(참조 시퀀스): [mcds/](../mcds/) conn 3341(애태치+AM0), conn 4085(MCDS 폴링) — 해설 §8
 - 도구 분석(대응 UI/동작): [MCD_TOOLS_ANALYSIS.md](MCD_TOOLS_ANALYSIS.md)
