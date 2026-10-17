@@ -1,0 +1,14 @@
+== mcds_recorder.dll 임포트 요약 (dumpbin /imports, 2026-10-18) ==
+KERNEL32: CloseHandle, GetCurrentProcess/ThreadId, GetSystemDirectoryA, Sleep, TerminateProcess,
+        OpenMutexW, Wow64Disable/RevertWow64FsRedirection, (CRT 지원 다수)
+SHELL32: ShellExecuteA
+ADVAPI32: GetUserNameA
+MSVCP140/VCRUNTIME/CRT: 파일(fopen/fwrite/fclose), _beginthreadex, qsort, 메모리 계열
+WS2_32 (서수 임포트 + 2개 이름):
+   3=closesocket, 4=connect, 7=getsockopt, 9=htons, 10=inet_addr, 16=recv, 18=select,
+   19=send, 21=setsockopt, 23=socket, 111=WSAGetLastError, 112=WSASetLastError,
+   115=WSAStartup, 151=__WSAFDIsSet  +  freeaddrinfo/getaddrinfo (이름)
+→ 일반 소켓 TCP 클라이언트 일체 (서수 임포트라 이름 기반 스캔에는 잡히지 않음)
+
+서버 기동/중복 가드: OpenMutexW("Global\only_one_TasServer_on_host") + ShellExecuteA("\start_tas_server.bat")
+세션 사용자명: GetUserNameA → Target Select의 Session Name 기본값(예: 'admin')

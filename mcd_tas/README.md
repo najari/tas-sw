@@ -362,6 +362,8 @@ build\Release\tas_probe.exe [host] [port]
 - **M13 (확인, 2026-10-18)**: MCDS Trace Viewer 독립성 확인 (`M13_MCDS_TRACE_VIEWER_CHECK.md`) —
   Trace Viewer는 `mcdxdas.dll`을 로드하지 않음(자체 TAS 클라이언트 + `mcds_recorder.dll`;
   같은 폴더에 우리 DLL 배치·연결 후에도 미로드) → DLL 드롭인과 무관.
+- **M14 (참고, 2026-10-18)**: `mcds_recorder.dll` 정적 분석 (`MCDS_RECORDER_ANALYSIS.md`) —
+  22개 `mcdsrl_*` API · 내장 TAS TCP 클라이언트(WS2_32 **서수 임포트**) · MCDS 설정/녹화/`.mcds` 파일 기능.
 - 참고 문서: `C:\work\tas_server_analysis\`(TAS 프로토콜 캡처·분석), `tas-sw` 저장소 문서
 
 ## 라이선스

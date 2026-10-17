@@ -11,6 +11,7 @@ TAS(Infineon) 관련 자체 분석·검증 자료 모음 (2026-10-17).
 | [TAS_PROTOCOL_CAPTURE.md](docs/TAS_PROTOCOL_CAPTURE.md) | 클라이언트-서버 평문 프로토콜 캡처 전량 해석(§8: DAS 네이티브 도구 실캡처 해독): PL2/PL1/PL0 계층 포맷, 패킷별 해설, 자체 구현 가이드 |
 | [DAS_DLL_ANALYSIS.md](docs/DAS_DLL_ANALYSIS.md) | DAS 클라이언트 DLL(das_api.dll·mcdxdas.dll) 구현 분석: 로더·함수 테이블, 내장 TAS 클라이언트, 서버 자동 기동, MCD↔DAS 연동 구조 |
 | [MCD_TOOLS_ANALYSIS.md](docs/MCD_TOOLS_ANALYSIS.md) | DAS 네이티브 도구(mcd_basic_client·mcds_trace_viewer) UI/동작 분석: 열거·세션·폴링 사이클, 스크린샷, 실캡처 트래픽 대응 |
+| [MCDS_RECORDER_ANALYSIS.md](docs/MCDS_RECORDER_ANALYSIS.md) | MCDS Recorder Library(`mcds_recorder.dll`) 정적 분석: 22개 `mcdsrl_*` API, 내장 TAS TCP 클라이언트(서수 임포트), MCDS 설정·녹화·`.mcds` 파일 기능 |
 | [MCD_TAS_PROTOTYPE.md](docs/MCD_TAS_PROTOTYPE.md) | MCD API v1.1 over TAS 프로토타입(`mcd_tas.dll`) 구현·검증 노트: 구현 범위, 애태치 시퀀스, PL0 인코더, 실서버 검증(캡처 §8 대조) |
 
 ## 캡처 워크스페이스 (`pkt_capture/`)

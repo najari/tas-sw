@@ -1,0 +1,14 @@
+== mcds_recorder.dll 익스포트 (22개, 전부 mcdsrl_*) ==
+[디바이스] mcdsrl_connect_device(0x45F0) / mcdsrl_device_connected(0x4610) / mcdsrl_disconnect_device(0x4680)
+          mcdsrl_qry_devices(0x48E0) / mcdsrl_reset_device(0x4B20)
+[데이터]  mcdsrl_get_data_from_fifo(0x46E0) / mcdsrl_read(0x4990) / mcdsrl_read_block(0x49E0)
+          mcdsrl_read_list(0x4A40) / mcdsrl_read_timestamped(0x4AC0)
+[녹화]    mcdsrl_get_recstate(0x4750) / mcdsrl_start_recording(0x4C30) / mcdsrl_stop_recording(0x4C40)
+          mcdsrl_set_trace_buf(0x4BD0) / mcdsrl_set_mcdsconfig(0x4BB0)
+[파일]    mcdsrl_open_trace_file(0x4860)      [쓰기] mcdsrl_write(0x4D80) / write_block(0x4DD0) / write_list(0x4E30)
+[기타]    mcdsrl_lib_init(0x4770) / mcdsrl_lib_version(0x4850) / mcdsrl_get_error(0x4740)
+
+패턴: 각 익스포트는 전역 컨텍스트(0x180014000, .data)를 첫 인자로 넘겨 내부 구현으로 jmp하는 썬 크 스텁
+  예) mcdsrl_connect_device: mov r8,rdx; mov rdx,rcx; lea rcx,[ctx]; jmp 0x3A80
+      mcdsrl_lib_version:    lea rax,[0x18000FED8]; ret  (정적 version 구조체 포인터 반환)
+  → 핸들 없는 단일 전역 상태(lib_init 1회) — 'Call mcdsrl_lib_init() only once' 문자열과 부합

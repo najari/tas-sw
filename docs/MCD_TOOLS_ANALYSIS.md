@@ -184,6 +184,9 @@ Ticks(Timestamps) `Ticks On` · Delay Trigger Trace Recording `Disabled`(값 0).
   - `Device > Connect Device…`(**Alt+D**) → Target Select에서 `TC27x LBHJYL (DAS JTAG AURDUINO 46YPEADW)`
     열거 → Select → 타이틀 `DAS JTAG AURDUINO 46YPEADW - MCDS Trace Viewer` 전환(연결 성공).
 - **의미**: MCD API(`mcdxdas.dll`) 드롭인은 이 도구에 영향을 주지 않음 — 프로토타입 검증 범위 밖.
+- **후속(M14)**: 이 도구가 로드하는 **`mcds_recorder.dll` 정적 분석** 완료 —
+  22개 `mcdsrl_*` API + **내장 TAS TCP 클라이언트**(WS2_32 서수 임포트) + MCDS 설정·녹화·`.mcds` 파일 기능:
+  [MCDS_RECORDER_ANALYSIS.md](MCDS_RECORDER_ANALYSIS.md) 참조.
 - 증거: [m13_dropin/](../m13_dropin/) (module_check.txt · 화면 3종)
 - 메모(자동화): 뷰어 메뉴/다이얼로그는 별도 팝업 창이라 창목록·캡처에 안 보이는 경우가 있고,
   메뉴 진입은 뷰어가 포그라운드일 때 **실제 키 입력(Alt+D)**으로 동작.

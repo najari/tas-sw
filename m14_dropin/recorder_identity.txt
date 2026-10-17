@@ -1,0 +1,8 @@
+== mcds_recorder.dll 신원 (DAS64 배포본 사본, 2026-10-18) ==
+파일: mcds_recorder.dll  96,808 B
+SHA256: 07FEE00BA9723A96C9A0B93376E37C408F29552EF55FF3B78973E00D14621033
+아키텍처: x64 PE DLL, image base 0x180000000
+타임스탬프: 2025-08-07 11:18:10 (UTC)
+VERSIONINFO: CompanyName 'Infineon Technologies AG' · ProductName 'MCDS Recorder Library'
+             FileDescription 'mcds_recorder' · ProductVersion 3.3.0.0
+사본: C:\Program Files\DAS64\clients\mcds_recorder.dll 와 해시 일치(동일 파일)

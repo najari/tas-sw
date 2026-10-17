@@ -1,0 +1,15 @@
+== mcds_recorder.dll 주요 문자열 (기능 추정 근거) ==
+[정체] MCDS Recorder Library / mcds_recorder.dll
+[TAS] 'MCDS recorder'(세션명) · localhost · '\\start_tas_server.bat' · 'Global\\only_one_TasServer_on_host'
+      TAS 오류군: 'ERROR: Server connection protocol (PL1 packet count)', 'ERROR: Session not yet started',
+      'ERROR: Could not exclusively subscribe to channel %d …', 'ERROR: Channel number %d is too high…',
+      'ERROR: msg_length too high for TAS_CHL_TGT_TRC', 'ERROR: TasServer does not support continuous trace',
+      'ERROR: Could not read channel description from device', 'ERROR: Wrong TAS API usage' 외
+[디바이스] TC2XX_MINIMCDS / TC3XX_MINIMCDS · 'Device has no on-chip trace HW'
+[MCDS 설정 검증] OCS 초기상태 경고(CRSV_HAR: Halt After Reset 필요) · FIFOBOT/FIFOTOP 일관성 ·
+      MCTRL_RECBUF_RAM(FIFOTOP vs TMECTRL.SIZE) · MCXACT29(MCDS0/MCDS1 일치) · EMEM 구성 ·
+      'START_OF_MCDS_CONFIG' · 'Configured trace size is 0KB' · 'Trace to RAM is out of range'
+[녹화 흐름] 'Set mcdsconfig first' · 'Recording already started' · 'Call mcdsrl_stop_recording() before…' ·
+      'No trace data available/recorded' · 'TasServer does not support continuous trace'
+[파일] 'Could not open trace file' · 'Open trace file exists'
+[기타] 'Device not halted after reset (unplug and plug the USB cable of the miniWiggler)'
