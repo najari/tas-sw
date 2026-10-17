@@ -41,6 +41,17 @@ DAS64 도구(`mcd_basic_client` / `mcds_trace_viewer`) ↔ TasServer 실캡처 �
 - `crop_*.png`·`menu_*.png` — UI 증거 스크린샷
 - 해설: [TAS_PROTOCOL_CAPTURE.md](docs/TAS_PROTOCOL_CAPTURE.md) §8 · [MCD_TOOLS_ANALYSIS.md](docs/MCD_TOOLS_ANALYSIS.md)
 
+## 프로토타입 소스 (`mcd_tas/`)
+
+MCD API v1.1 over TAS 프로토타입 DLL(`mcd_tas.dll`) 소스 — 구현·검증 노트는
+[MCD_TAS_PROTOTYPE.md](docs/MCD_TAS_PROTOTYPE.md), 상세 기록은 `mcd_tas/README.md`.
+
+- `src/mcd_impl.cpp` — MCD API 구현(애태치·PL0 RW·`qry_state` DBGSR·`qry_reg_map` PC; 타깃 제어는 스텁)
+- `src/tas_client.cpp/.h` — TAS PL0 와이어 계층(SERVER_CONNECT/SESSION_START/DEVICE_CONNECT/PL0 프레임)
+- `src/proxy_*.cpp/.h` — 원본 `mcdxdas.dll` 비교용 포워딩 프록시(M6 — API 반환값 대조; `tools/gen_proxy.py` 생성)
+- `tests/` — 스모크(읽기 전용)·프로토콜 프로브·FTDI JTAG 스캔 · `tools/` — 프로브/프록시 생성기/PE 덤퍼
+- 원칙: **읽기 전용** — Run/Stop/Step/Reset은 의도적 미구현(스텁)
+
 ## 로그 (`logs/`)
 
 실기 검증 증적:

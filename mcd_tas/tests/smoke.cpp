@@ -1,0 +1,301 @@
+/* smoke.c - loads mcd_tas.dll dynamically (the way an MCD tool would) and
+ * exercises the implemented subset against a running tas_server.
+ * By default the test is fully read-only (enumeration only).
+ * With --attach it additionally performs mcd_open_core_f, which
+ * attaches to the target (TAS DEVICE_CONNECT: hot attach, no reset or
+ * halt request) and executes read-only transaction lists. */
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
+/* Prevent __declspec(dllexport) on the API declarations (we never link to
+ * the DLL directly, all calls go through GetProcAddress). */
+#undef WIN32
+#include "mcd_api.h"
+
+typedef mcd_return_et (*pfn_initialize)(const mcd_api_version_st *, mcd_impl_version_info_st *);
+typedef void           (*pfn_exit)(void);
+typedef mcd_return_et (*pfn_qry_servers)(const mcd_char_t *, mcd_bool_t, uint32_t, uint32_t *, mcd_server_info_st *);
+typedef mcd_return_et (*pfn_open_server)(const mcd_char_t *, const mcd_char_t *, mcd_server_st **);
+typedef mcd_return_et (*pfn_close_server)(const mcd_server_st *);
+typedef mcd_return_et (*pfn_qry_systems)(uint32_t, uint32_t *, mcd_core_con_info_st *);
+typedef mcd_return_et (*pfn_qry_devices)(const mcd_core_con_info_st *, uint32_t, uint32_t *, mcd_core_con_info_st *);
+typedef mcd_return_et (*pfn_qry_cores)(const mcd_core_con_info_st *, uint32_t, uint32_t *, mcd_core_con_info_st *);
+typedef void           (*pfn_qry_error)(const mcd_core_st *, mcd_error_info_st *);
+typedef mcd_return_et (*pfn_run)(const mcd_core_st *, mcd_bool_t);
+typedef mcd_return_et (*pfn_open_core)(const mcd_core_con_info_st *, mcd_core_st **);
+typedef mcd_return_et (*pfn_close_core)(const mcd_core_st *);
+typedef mcd_return_et (*pfn_qry_mem_spaces)(const mcd_core_st *, uint32_t, uint32_t *, mcd_memspace_st *);
+typedef mcd_return_et (*pfn_execute_txlist)(const mcd_core_st *, mcd_txlist_st *);
+typedef mcd_return_et (*pfn_qry_state)(const mcd_core_st *, mcd_core_state_st *);
+
+static int g_fails = 0;
+#define CHK(cond, msg) do { \
+    if (cond) printf("  [ok]   %s\n", msg); \
+    else { printf("  [FAIL] %s\n", msg); g_fails++; } \
+} while (0)
+
+#define LOADFN(h, type, var, name) \
+    type var = (type)GetProcAddress(h, name); \
+    if (var == NULL) { printf("missing export: %s\n", name); return 3; }
+
+int main(int argc, char **argv)
+{
+    HMODULE h;
+    const char *dll  = (argc > 1 && argv[1][0] && argv[1][0] != '-') ? argv[1] : "mcd_tas.dll";
+    const char *cfg  = (argc > 2 && argv[2][0] && argv[2][0] != '-') ? argv[2] : NULL;
+    int attach = 0;
+    mcd_return_et r;
+    uint32_t n;
+    uint32_t i;
+
+    for (i = 1; i < (uint32_t)argc; i++)
+        if (strcmp(argv[i], "--attach") == 0)
+            attach = 1;
+
+    printf("== mcd_tas smoke test ==\n");
+    printf("dll: %s\ncfg: %s\nmode: %s\n\n", dll, cfg ? cfg : "(default)",
+           attach ? "with core attach (--attach)" : "read-only");
+
+    h = LoadLibraryA(dll);
+    if (h == NULL) {
+        printf("LoadLibraryA(%s) failed: %lu\n", dll, GetLastError());
+        return 2;
+    }
+
+    LOADFN(h, pfn_initialize,   f_init,    "mcd_initialize_f");
+    LOADFN(h, pfn_exit,         f_exit,    "mcd_exit_f");
+    LOADFN(h, pfn_qry_servers,  f_qrysvr,  "mcd_qry_servers_f");
+    LOADFN(h, pfn_open_server,  f_open,    "mcd_open_server_f");
+    LOADFN(h, pfn_close_server, f_close,   "mcd_close_server_f");
+    LOADFN(h, pfn_qry_systems,  f_systems, "mcd_qry_systems_f");
+    LOADFN(h, pfn_qry_devices,  f_devices, "mcd_qry_devices_f");
+    LOADFN(h, pfn_qry_cores,    f_cores,   "mcd_qry_cores_f");
+    LOADFN(h, pfn_qry_error,    f_err,     "mcd_qry_error_info_f");
+    LOADFN(h, pfn_run,          f_run,     "mcd_run_f");
+    LOADFN(h, pfn_open_core,    f_opencore,   "mcd_open_core_f");
+    LOADFN(h, pfn_close_core,   f_closecore,  "mcd_close_core_f");
+    LOADFN(h, pfn_qry_mem_spaces, f_memspaces, "mcd_qry_mem_spaces_f");
+    LOADFN(h, pfn_execute_txlist, f_txlist,   "mcd_execute_txlist_f");
+    LOADFN(h, pfn_qry_state,    f_state,      "mcd_qry_state_f");
+    printf("all exports resolved\n\n");
+
+    /* 1. initialize (the client acts as a v1.1 "SPRINT Release" tool) */
+    {
+        mcd_api_version_st req;
+        mcd_impl_version_info_st impl;
+        memset(&req, 0, sizeof(req));
+        req.v_api_major = MCD_API_VER_MAJOR;
+        req.v_api_minor = MCD_API_VER_MINOR;
+        strncpy(req.author, MCD_API_VER_AUTHOR, sizeof(req.author) - 1);
+
+        r = f_init(&req, &impl);
+        CHK(r == MCD_RET_ACT_NONE, "mcd_initialize_f");
+        if (r == MCD_RET_ACT_NONE) {
+            printf("       impl: api %u.%u '%s', vendor '%s', build %u.%u.%u, date %s\n",
+                   (unsigned)impl.v_api.v_api_major, (unsigned)impl.v_api.v_api_minor,
+                   impl.v_api.author, impl.vendor,
+                   (unsigned)impl.v_imp_major, (unsigned)impl.v_imp_minor,
+                   (unsigned)impl.v_imp_build, impl.date);
+        }
+    }
+
+    /* 2. query running servers */
+    {
+        mcd_server_info_st svr[4];
+        n = 0;
+        r = f_qrysvr("localhost", TRUE, 0, &n, NULL);
+        CHK(r == MCD_RET_ACT_NONE, "mcd_qry_servers_f (count)");
+        printf("       running servers on localhost: %u\n", (unsigned)n);
+        if (n > 0) {
+            uint32_t cap = 4;
+            memset(svr, 0, sizeof(svr));
+            r = f_qrysvr("localhost", TRUE, 0, &cap, svr);
+            CHK(r == MCD_RET_ACT_NONE && cap >= 1, "mcd_qry_servers_f (fetch)");
+            for (i = 0; i < cap && i < 4; i++)
+                printf("       server[%u]: '%s' acc_hw '%s' system_instance '%s'\n",
+                       i, svr[i].server, svr[i].acc_hw, svr[i].system_instance);
+        }
+    }
+
+    /* 3. open server (read-only handshake + target enumeration) */
+    {
+        mcd_server_st *srv = NULL;
+        mcd_core_con_info_st system_ci;
+        mcd_core_con_info_st devs[8];
+        mcd_core_con_info_st cores[8];
+        uint32_t nsys, ndev, ncore;
+
+        r = f_open(NULL, cfg, &srv);
+        CHK(r == MCD_RET_ACT_NONE && srv != NULL, "mcd_open_server_f");
+        if (r != MCD_RET_ACT_NONE || srv == NULL) {
+            mcd_error_info_st ei;
+            f_err(NULL, &ei);
+            printf("       error 0x%08x: %s\n", (unsigned)ei.error_code, ei.error_str);
+            f_exit();
+            FreeLibrary(h);
+            return 1;
+        }
+
+        /* 4. systems */
+        nsys = 4;
+        memset(&system_ci, 0, sizeof(system_ci));
+        r = f_systems(0, &nsys, &system_ci);
+        CHK(r == MCD_RET_ACT_NONE && nsys == 1, "mcd_qry_systems_f");
+        printf("       system '%s' instance '%s' host %s:%u\n",
+               system_ci.system, system_ci.system_instance,
+               system_ci.host, (unsigned)system_ci.server_port);
+
+        /* 5. devices */
+        ndev = 8;
+        memset(devs, 0, sizeof(devs));
+        r = f_devices(&system_ci, 0, &ndev, devs);
+        CHK(r == MCD_RET_ACT_NONE && ndev >= 1, "mcd_qry_devices_f");
+        for (i = 0; i < ndev && i < 8; i++)
+            printf("       device[%u]: acc_hw '%s' device '%s' type 0x%08X id 0x%08X\n",
+                   i, devs[i].acc_hw, devs[i].device,
+                   (unsigned)devs[i].device_type, (unsigned)devs[i].device_id);
+
+        /* 6. cores of the first device */
+        if (ndev >= 1) {
+            ncore = 8;
+            memset(cores, 0, sizeof(cores));
+            r = f_cores(&devs[0], 0, &ncore, cores);
+            CHK(r == MCD_RET_ACT_NONE && ncore >= 1, "mcd_qry_cores_f");
+            for (i = 0; i < ncore && i < 8; i++)
+                printf("       core[%u]: '%s' core_type %u core_id 0x%08X (acc_hw '%s')\n",
+                       i, cores[i].core, (unsigned)cores[i].core_type,
+                       (unsigned)cores[i].core_id, cores[i].acc_hw);
+        }
+
+        /* 6b. M2: core attach + memory access (only with --attach) */
+        if (!attach) {
+            printf("  [skip] M2 core attach test (use --attach to include TAS DEVICE_CONNECT)\n");
+        } else if (ndev < 1 || ncore < 1) {
+            printf("  [skip] M2 core attach test (no core enumerated)\n");
+        } else {
+            mcd_core_st *core = NULL;
+
+            printf("  NOTE: --attach performs TAS DEVICE_CONNECT (JTAG hot attach, no reset/halt)\n");
+            r = f_opencore(&cores[0], &core);
+            CHK(r == MCD_RET_ACT_NONE && core != NULL, "mcd_open_core_f (session + attach)");
+            if (r != MCD_RET_ACT_NONE || core == NULL) {
+                mcd_error_info_st ei;
+                f_err(NULL, &ei);
+                printf("       error 0x%08x: %s\n", (unsigned)ei.error_code, ei.error_str);
+            } else {
+                /* memory spaces */
+                {
+                    mcd_memspace_st sp;
+                    uint32_t nm = 1;
+                    memset(&sp, 0, sizeof(sp));
+                    r = f_memspaces(core, 0, &nm, &sp);
+                    CHK(r == MCD_RET_ACT_NONE && nm == 1, "mcd_qry_mem_spaces_f");
+                    if (r == MCD_RET_ACT_NONE && nm == 1)
+                        printf("       mem space id %u '%s' type 0x%x range 0x%llX..0x%llX\n",
+                               (unsigned)sp.mem_space_id, sp.mem_space_name,
+                               (unsigned)sp.mem_type,
+                               (unsigned long long)sp.min_addr,
+                               (unsigned long long)sp.max_addr);
+                }
+
+                /* enumeration should now show the identified device */
+                {
+                    uint32_t nd2 = 8;
+                    mcd_core_con_info_st dv[8];
+                    memset(dv, 0, sizeof(dv));
+                    if (f_devices(&system_ci, 0, &nd2, dv) == MCD_RET_ACT_NONE && nd2 >= 1)
+                        printf("       after attach: device '%s' type 0x%08X id 0x%08X\n",
+                               dv[0].device, (unsigned)dv[0].device_type,
+                               (unsigned)dv[0].device_id);
+                }
+
+                /* read-only txlist: 0xF0000480 is the first address the
+                 * reference MCD client reads after attaching */
+                {
+                    mcd_tx_st tx[2];
+                    uint8_t  b0[4], b1[16];
+                    mcd_txlist_st tl;
+
+                    memset(tx, 0, sizeof(tx));
+                    memset(b0, 0, sizeof(b0));
+                    memset(b1, 0, sizeof(b1));
+
+                    tx[0].addr.mem_space_id = 1;
+                    tx[0].addr.address = 0xF0000480ull;
+                    tx[0].access_type = MCD_TX_AT_R;
+                    tx[0].access_width = 4;
+                    tx[0].num_bytes = 4;
+                    tx[0].data = b0;
+
+                    tx[1].addr.mem_space_id = 1;
+                    tx[1].addr.address = 0xF0000480ull;
+                    tx[1].access_type = MCD_TX_AT_R;
+                    tx[1].access_width = 0;
+                    tx[1].num_bytes = 16;
+                    tx[1].data = b1;
+
+                    tl.tx = tx;
+                    tl.num_tx = 2;
+                    tl.num_tx_ok = 0;
+
+                    r = f_txlist(core, &tl);
+                    CHK(r == MCD_RET_ACT_NONE && tl.num_tx_ok == 2,
+                        "mcd_execute_txlist_f (2 read transactions)");
+                    if (r == MCD_RET_ACT_NONE && tl.num_tx_ok == 2) {
+                        printf("       rd32  @0xF0000480 ->");
+                        for (i = 0; i < 4; i++) printf(" %02X", b0[i]);
+                        printf("\n       rd16B @0xF0000480 ->");
+                        for (i = 0; i < 16; i++) printf(" %02X", b1[i]);
+                        printf("\n");
+                    } else {
+                        mcd_error_info_st ei;
+                        f_err(NULL, &ei);
+                        printf("       error 0x%08x: %s (num_tx_ok %u)\n",
+                               (unsigned)ei.error_code, ei.error_str,
+                               (unsigned)tl.num_tx_ok);
+                    }
+                }
+
+                /* state query */
+                {
+                    mcd_core_state_st st;
+                    memset(&st, 0, sizeof(st));
+                    r = f_state(core, &st);
+                    CHK(r == MCD_RET_ACT_NONE, "mcd_qry_state_f");
+                    if (r == MCD_RET_ACT_NONE)
+                        printf("       state 0x%x (%s) info '%s'\n",
+                               (unsigned)st.state,
+                               st.state == MCD_CORE_STATE_UNKNOWN ? "unknown" :
+                               st.state == MCD_CORE_STATE_HALTED ? "halted" :
+                               st.state == MCD_CORE_STATE_RUNNING ? "running" : "other",
+                               st.info_str);
+                }
+
+                r = f_closecore(core);
+                CHK(r == MCD_RET_ACT_NONE, "mcd_close_core_f");
+            }
+        }
+
+        /* 7. stub path: mcd_run_f must report "not implemented" */
+        {
+            mcd_error_info_st ei;
+            r = f_run(NULL, TRUE);
+            CHK(r == MCD_RET_ACT_HANDLE_ERROR, "stub mcd_run_f returns HANDLE_ERROR");
+            f_err(NULL, &ei);
+            printf("       stub error 0x%08x: %s\n", (unsigned)ei.error_code, ei.error_str);
+        }
+
+        /* 8. close server + exit */
+        r = f_close(srv);
+        CHK(r == MCD_RET_ACT_NONE, "mcd_close_server_f");
+    }
+
+    f_exit();
+    FreeLibrary(h);
+
+    printf("\n== %s (%d failure(s)) ==\n", g_fails ? "SMOKE FAILED" : "SMOKE OK", g_fails);
+    return g_fails ? 1 : 0;
+}
