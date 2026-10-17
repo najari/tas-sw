@@ -1,0 +1,9 @@
+== our mcd_tas.dll - qry_state while RUNNING (client_stderr22.log) ==
+mcd_tas: qry_state: DBGSR @0xF881FD00 = 0x00001001 (DE=1 HALT[2:1]=0 SIH=0 SUSP=0 PEVT=0 EVTSRC=16) -> RUNNING (cached for session)
+mcd_tas: CALL qry_state -> RUNNING (dbgsr 0x00001001)
+mcd_tas: CALL qry_state -> RUNNING (dbgsr 0x00001001)
+
+== our mcd_tas.dll - qry_state after restore (client_stderr23.log) ==
+mcd_tas: qry_state: DBGSR @0xF881FD00 = 0x00001003 (DE=1 HALT[2:1]=1 SIH=0 SUSP=0 PEVT=0 EVTSRC=16) -> DEBUG (cached for session)
+mcd_tas: CALL qry_state -> DEBUG (dbgsr 0x00001003)
+mcd_tas: CALL qry_state -> DEBUG (dbgsr 0x00001003)

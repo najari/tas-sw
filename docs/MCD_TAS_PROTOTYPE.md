@@ -23,6 +23,7 @@ TasServer(24817) 백엔드로** 구동하는 프로토타입 DLL(`mcd_tas.dll`)�
 | M8 | mem_spaces 교차 + mem_blocks/스텁 정본 문구 정합 | **완료·검증(§3-K)** — `"Code and Data"`(id 0)·opts 0x200 · mem_blocks 미구현(0x100) · SMOKE OK |
 | M9 | 열거(system/device/core) 교차 캘리브레이션 | **완료·검증(§3-L)** — 코어별 `1.6E/1.6P`·core_id(0x00B7C002/0x00C0C012)·devid 0 · Core Select 정상 시절 일치 |
 | M10 | 리셋 클래스(rst_classes) 교차 캘리브레이션 | **완료·검증(§3-M)** — 벡터 `0x7` + 3개 클래스 문구 · 클라이언트 호출 함수 기준 교차 완료 |
+| M11 | Run(HALT=00b) 실관찰 캘리브레이션 (승인 하 원본 GUI Run/Stop) | **완료·검증(§3-N)** — 실행 중 `state=1`/IP 진행 · 정지 복귀 · DBGSR RUNNING 경로 실증 |
 
 ## 1. 구현 범위
 
@@ -249,6 +250,19 @@ trig_set_state 덤프)으로 원본 `mcdxdas.dll`의 레지스터 DB를 전량 �
 - 증거: [m10_dropin/](../m10_dropin/) (proxy_rst_dump.txt · smoke_run.txt · m10_main.png)
 - 상세: `M10_RST_CLASSES_CROSS_CALIBRATION.md` (tas_server_analysis, 로컬)
 
+### N. M11 — Run(HALT=00b) 실관찰 캘리브레이션 (2026-10-18)
+
+사용자 승인 하에 **원본 스택 GUI로만** Run/Stop 수행(우리 코드/스텁은 상태 변경 없음) —
+목적: `qry_state` RUNNING 경로(M5 미실측) 실증.
+
+- 원본(프록시): `mcd_run_f -> 0` → `state=1 (RUNNING)` · PC `0xA0000020→0x8003A1xx..` 진행 ·
+  GUI `State: Running`; `mcd_stop_f -> 0` → `state=3 (DEBUG)` 복귀, 정지 직후 **`event=0x10`
+  (STOPPED) 1회** · `trig_set_state active=1`(동적 값). DBGSR 재판독 0회(내부 모델).
+- 우리 DLL: 실행 중 애태치 → `DBGSR=0x00001001 (HALT=00b) → RUNNING`(GUI `Running`/IP 진행);
+  복원 후 `0x00001003 (HALT=01b) → DEBUG`. **M5 미실측 항목 해소 — 코드 변경 없음(검증만).**
+- 증거: [m11_dropin/](../m11_dropin/) (proxy_run_stop.txt · our_state_log_excerpt.txt · 화면 7종)
+- 상세: `M11_RUN_STATE_CALIBRATION.md` (tas_server_analysis, 로컬)
+
 ## 4. 구현 메모 (정본 근거)
 
 - **프레임 빌더** (`tas_pkt_handler_rw.cpp` 규칙, §8 실측과 일치):
@@ -281,7 +295,9 @@ trig_set_state 덤프)으로 원본 `mcdxdas.dll`의 레지스터 DB를 전량 �
   device_id=0 · 시스템 엔트리 공백.
 - **M10(완료, 2026-10-18)**: 리셋 클래스 교차(§3-M) — 벡터 0x7 + 3개 문구. **클라이언트 호출
   함수 기준 교차 캘리브레이션 전 항목 완료.**
-- **다음(M10+)**: Run 실관찰 캘리브레이션(승인 필요), (승인 후) Write 검증.
+- **M11(완료, 2026-10-18)**: Run 실관찰(§3-N) — 실행 중 `State: Running`/IP 진행·정지 복귀,
+  DBGSR RUNNING 경로 실증.
+- **다음(M11+)**: (승인 후) GUI Write 검증 — 마지막 남은 캘리브레이션 항목.
 
 ## 부록. 산출물
 
@@ -296,6 +312,7 @@ trig_set_state 덤프)으로 원본 `mcdxdas.dll`의 레지스터 DB를 전량 �
 - M8 mem_spaces/스텁 정합 캡처·발췌: [m8_dropin/](../m8_dropin/) (proxy_mem_dump.txt · smoke_run.txt · main/read_regression)
 - M9 열거 교차 캘리브레이션 캡처·발췌: [m9_dropin/](../m9_dropin/) (proxy_enum_dump.txt · smoke_run.txt · select/main/read_regression)
 - M10 리셋 클래스 교차 캘리브레이션 캡처·발췌: [m10_dropin/](../m10_dropin/) (proxy_rst_dump.txt · smoke_run.txt · m10_main.png)
+- M11 Run 실관찰 캘리브레이션 캡처·발췌: [m11_dropin/](../m11_dropin/) (proxy_run_stop.txt · our_state_log_excerpt.txt · 화면 7종)
 - 정상 시절 vs 현재 대조(§5 = M3 재검증): [MCD_BASIC_VS_CURRENT_COMPARE.md](MCD_BASIC_VS_CURRENT_COMPARE.md)
 - 캡처 근거(참조 시퀀스): [mcds/](../mcds/) conn 3341(애태치+AM0), conn 4085(MCDS 폴링) — 해설 §8
 - 도구 분석(대응 UI/동작): [MCD_TOOLS_ANALYSIS.md](MCD_TOOLS_ANALYSIS.md)

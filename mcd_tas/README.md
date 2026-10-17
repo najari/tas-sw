@@ -4,12 +4,12 @@ MCD(Multi-Core Debug) API v1.1 **"SPRINT Release"** 구현 DLL 프로토타입.
 백엔드는 [TAS](https://github.com/najari/tas-sw) 서버(TCP 24817) — 즉, `mcdxdas.dll`(DAS 백엔드)의
 자매품으로 "MCD API를 TAS로" 제공하는 실험 구현입니다.
 
-- 상태: **M10 완료 (2026-10-18)** — 원본 `mcd_basic_client.exe`에 drop-in(`mcdxdas.dll` 자리)으로
+- 상태: **M11 완료 (2026-10-18)** — 원본 `mcd_basic_client.exe`에 drop-in(`mcdxdas.dll` 자리)으로
   **GUI 전 구간 검증**: Select→애태치, Core Info, GUI Read(`0x70000000`, `0xF0000480=0x00080001`),
-  **`State: Debug` / `IP: 0xA0000020`**(정상 시절 파리티), `qry_state` DBGSR 실상태(M5),
+  **`State: Debug` / `IP: 0xA0000020`**, `qry_state` DBGSR 실상태(M5),
   오류 표시 캘리브레이션(M6), reg_map 40개(M7), mem_spaces/스텁 문구(M8), 열거 교차(M9),
-  리셋 클래스 교차(M10 — 0x7/"Power-On Reset…") — 아래 "M3~M10 검증" 참조.
-  (M2 애태치: 초기 DEVICE_CONNECT 실패는 USB 허브 경유 문제 — 본체 직결로 해결)
+  리셋 클래스 교차(M10), **Run 실관찰(M11 — 실행 중 `State: Running`/IP 진행, 정지 복귀)** —
+  아래 "M3~M11 검증" 참조. (M2 애태치: 초기 DEVICE_CONNECT 실패는 USB 허브 경유 문제 — 본체 직결로 해결)
 - 원칙: **읽기 전용** — 타깃 상태 변경(Run/Stop/Step/Reset)은 의도적으로 미구현(스텁)
 - 소스 언어: C++ (SPRINT `mcd_api.h` 헤더가 `extern "C"` 비가드 선언이라 C에서는 컴파일 불가)
 
@@ -285,6 +285,18 @@ build\Release\tas_probe.exe [host] [port]
 - 상세 기록: `C:\work\tas_server_analysis\M10_RST_CLASSES_CROSS_CALIBRATION.md`
   (화면/발췌: `gui_test/m10_main.png`, `smoke_run_m10.txt`).
 
+### M11 검증 (2026-10-18) — Run(HALT=00b) 실관찰 캘리브레이션 (승인 하 원본 GUI Run/Stop)
+
+- 원본(프록시) 관찰: `mcd_run_f -> 0` → `qry_state state=1 (RUNNING)` · PC `0xA0000020`→`0x8003A1xx..`
+  진행 · GUI `State: Running`; `mcd_stop_f -> 0` → `state=3 (DEBUG)` 복귀, 정지 직후
+  **`event=0x10`(STOPPED) 1회**·`trig_set_state active=1` 전환(동적 값).
+- 원본은 DBGSR 재판독 0회(내부 모델) — 우리는 세션당 1회 판독(상태 소스), 값은 동일.
+- 우리 DLL 실측: 실행 중 애태치 → `DBGSR=0x00001001 (HALT=00b) → RUNNING`(GUI `Running`/IP 진행);
+  정지 복원 후 `DBGSR=0x00001003 (HALT=01b) → DEBUG`. **M5 미실측 항목 해소.**
+- 캐시 모델: 외부 정지 시 세션 표시 유지(IP 고정) — 원본 내부 모델과 정합.
+- 코드 변경 없음(M5 매핑 검증만). 상세 기록: `C:\work\tas_server_analysis\M11_RUN_STATE_CALIBRATION.md`
+  (화면/발췌: `gui_test/m11_*.png`).
+
 ## 알려진 한계 (M2)
 
 - ~~`mcd_open_core_f`의 성공 경로 미실측~~ → **해결(2026-10-18)**: 실패 원인은 환경(USB 허브 경유) —
@@ -328,6 +340,9 @@ build\Release\tas_probe.exe [host] [port]
   (`M10_RST_CLASSES_CROSS_CALIBRATION.md`) — 벡터 0x7 + 3개 클래스 문구 정합.
   클라이언트가 호출하는 함수 기준 교차 캘리브레이션 전 항목 완료. 잔여: Run 실관찰(승인 필요)·
   (승인 후) Write 및 타깃 제어.
+- **M11 (완료, 2026-10-18)**: Run 실관찰 캘리브레이션 (`M11_RUN_STATE_CALIBRATION.md`) —
+  승인 하 원본 GUI Run/Stop으로 실행 중 `State: Running`/IP 진행·정지 복귀 실증,
+  DBGSR RUNNING 경로(M5 미실측) 해소. 잔여: **(승인 후) GUI Write 검증** 만 남음.
 - 참고 문서: `C:\work\tas_server_analysis\`(TAS 프로토콜 캡처·분석), `tas-sw` 저장소 문서
 
 ## 라이선스

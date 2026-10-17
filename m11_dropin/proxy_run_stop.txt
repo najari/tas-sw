@@ -1,0 +1,27 @@
+== original mcdxdas.dll (via forwarding proxy) - RUN/STOP calibration ==
+- qry_state -> 0: state=3 event=0x0 hw_thread=0 trig=0 stop='' info=''
+    (new PC sample) tx[0] POST data=[20 00 00 A0 ]
++ mcd_run_f
+- mcd_run_f -> 0
+- qry_state -> 0: state=1 event=0x0 hw_thread=0 trig=0 stop='' info=''
+    (new PC sample) tx[0] POST data=[C8 A3 03 80 ]
+    (new PC sample) tx[0] POST data=[60 A1 03 80 ]
+    (new PC sample) tx[0] POST data=[40 A1 03 80 ]
+    (new PC sample) tx[0] POST data=[28 A3 03 80 ]
+    (new PC sample) tx[0] POST data=[30 A3 03 80 ]
+    (new PC sample) tx[0] POST data=[24 A3 03 80 ]
+    (new PC sample) tx[0] POST data=[34 A3 03 80 ]
+    (new PC sample) tx[0] POST data=[6C A2 03 80 ]
+    (new PC sample) tx[0] POST data=[5C A1 03 80 ]
+    (new PC sample) tx[0] POST data=[42 A1 03 80 ]
+    (new PC sample) tx[0] POST data=[66 A2 03 80 ]
+    (new PC sample) tx[0] POST data=[2C A3 03 80 ]
+    (new PC sample) tx[0] POST data=[38 A1 03 80 ]
+    (new PC sample) tx[0] POST data=[48 A1 03 80 ]
+    (new PC sample) tx[0] POST data=[60 A2 03 80 ]
++ mcd_stop_f
+- mcd_stop_f -> 0
+- qry_state -> 0: state=3 event=0x10 hw_thread=0 trig=0 stop='' info=''
+- qry_trig_set_state -> 0: active=1 state=0 state_valid=0 trig_bus=0x0 bus_valid=0 trace=0 trace_valid=0 analysis=0 analysis_valid=0
+- qry_state -> 0: state=3 event=0x0 hw_thread=0 trig=0 stop='' info=''
+    ... (PC samples: 17 distinct values total)
