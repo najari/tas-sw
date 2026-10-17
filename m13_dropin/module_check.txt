@@ -1,0 +1,27 @@
+== MCDS Trace Viewer 모듈 확인 (우리 mcdxdas.dll이 같은 폴더에 있는 상태) ==
+
+실행 폴더: C:\work\mcd_tas\mtv_dropin\
+  - mcds_trace_viewer.exe (원본 사본)
+  - mcds_configurator.dll / mcds_decoder.dll / mcds_recorder.dll (원본 사본)
+  - mcdxdas.dll (= 우리 mcd_tas.dll 빌드; 54272 B)  ← 존재하지만 로드되지 않음
+
+로드된 관련 모듈 (Get-Process -Id <pid>).Modules):
+  mcds_trace_viewer.exe   C:\work\mcd_tas\mtv_dropin\mcds_trace_viewer.exe
+  mcds_recorder.dll       C:\work\mcd_tas\mtv_dropin\mcds_recorder.dll
+  → mcdxdas.dll: **미로드** (연결 후에도 동일)
+
+바이너리 정적 스캔 (mcds_trace_viewer.exe, 37,468,200 B):
+  'mcdxdas'            참조 0건
+  'mcd_*_f' (MCD API)  참조 0건 (mcd_initialize_f 등)
+  'das_api'            참조 0건
+  'mcds_recorder.dll'  1건  ("Could not load %s" / "Decoding .mcds files…")
+  'TasServer Host:'    존재 → 자체 TCP(TAS) 클라이언트 (WS2_32 직접 사용)
+
+동작 확인 (2026-10-18, 읽기 전용):
+  - Device > Connect Device... (Alt+D) → Target Select 다이얼로그
+  - 타깃 열거: "TC27x LBHJYL (DAS JTAG AURDUINO 46YPEADW)" (GET_TARGETS 폴링)
+  - Select → 메인 타이틀 "DAS JTAG AURDUINO 46YPEADW - MCDS Trace Viewer" 전환 = TAS 연결 성공
+  - 연결 후에도 mcdxdas.dll 로드 없음 — 우리 DLL과 무관함을 실증
+
+결론: MCDS Trace Viewer는 MCD API(mcdxdas.dll) 소비자가 아니다 — 자체 TAS 클라이언트 +
+mcds_recorder.dll을 사용한다. `mcdxdas.dll` 드롭인(우리 DLL 교체)은 이 도구에 영향을 주지 않는다.

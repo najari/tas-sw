@@ -315,6 +315,9 @@ trig_set_state 덤프)으로 원본 `mcdxdas.dll`의 레지스터 DB를 전량 �
   DBGSR RUNNING 경로 실증.
 - **M12(완료, 2026-10-18)**: GUI Write 검증(§3-O) — LMU 스크래치 셀 쓰기/Read-back/원값 복원 +
   원본 파리티 · 실패 모달 재규명(M6 정정). **캘리브레이션·검증 항목 전부 완료.**
+- **M13(확인, 2026-10-18)**: MCDS Trace Viewer는 `mcdxdas.dll`을 로드하지 않음(자체 TAS 클라이언트 +
+  `mcds_recorder.dll`) — DLL 드롭인과 무관. 상세: [MCD_TOOLS_ANALYSIS.md](MCD_TOOLS_ANALYSIS.md) §3.8
+  · [m13_dropin/](../m13_dropin/).
 - **다음**: 새 요구사항에 한함.
 
 ## 부록. 산출물
@@ -332,6 +335,7 @@ trig_set_state 덤프)으로 원본 `mcdxdas.dll`의 레지스터 DB를 전량 �
 - M10 리셋 클래스 교차 캘리브레이션 캡처·발췌: [m10_dropin/](../m10_dropin/) (proxy_rst_dump.txt · smoke_run.txt · m10_main.png)
 - M11 Run 실관찰 캘리브레이션 캡처·발췌: [m11_dropin/](../m11_dropin/) (proxy_run_stop.txt · our_state_log_excerpt.txt · 화면 7종)
 - M12 GUI Write 검증 캡처·발췌: [m12_dropin/](../m12_dropin/) (our/orig write_test · 화면 5종 · modal_notes.txt)
+- M13 Trace Viewer 독립성 확인: [m13_dropin/](../m13_dropin/) (module_check.txt · 화면 3종)
 - 정상 시절 vs 현재 대조(§5 = M3 재검증): [MCD_BASIC_VS_CURRENT_COMPARE.md](MCD_BASIC_VS_CURRENT_COMPARE.md)
 - 캡처 근거(참조 시퀀스): [mcds/](../mcds/) conn 3341(애태치+AM0), conn 4085(MCDS 폴링) — 해설 §8
 - 도구 분석(대응 UI/동작): [MCD_TOOLS_ANALYSIS.md](MCD_TOOLS_ANALYSIS.md)

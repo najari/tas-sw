@@ -175,6 +175,19 @@ Ticks(Timestamps) `Ticks On` · Delay Trigger Trace Recording `Disabled`(값 0).
 - 창 하단 문구 `Session was started without a session name` / `15814.231 s after server start` / `303.033 s after session start` 는
   서버의 세션 시작 시각 정보를 표시한 것(실제 시각과 일치: v2.0 기동 14:39:37 → 19:03:11 세션 = 15,814초).
 
+### 3.8 DLL 의존성 확인 — `mcdxdas.dll`과 무관 (M13, 2026-10-18)
+
+- **정적**: `mcds_trace_viewer.exe` 임포트/문자열에 `mcdxdas`·`mcd_*_f`(MCD API)·`das_api` 참조 **0건**.
+  자체 `mcds_recorder.dll` 동적 로드(문자열 1건) + **자체 TCP(TAS) 클라이언트**(WS2_32 직접, "TasServer Host:" UI).
+- **런타임**(같은 폴더에 프로토타입 `mcdxdas.dll`을 배치한 상태):
+  - 로드 모듈 = `mcds_trace_viewer.exe` + `mcds_recorder.dll`만 — **`mcdxdas.dll` 미로드**(연결 후에도 동일).
+  - `Device > Connect Device…`(**Alt+D**) → Target Select에서 `TC27x LBHJYL (DAS JTAG AURDUINO 46YPEADW)`
+    열거 → Select → 타이틀 `DAS JTAG AURDUINO 46YPEADW - MCDS Trace Viewer` 전환(연결 성공).
+- **의미**: MCD API(`mcdxdas.dll`) 드롭인은 이 도구에 영향을 주지 않음 — 프로토타입 검증 범위 밖.
+- 증거: [m13_dropin/](../m13_dropin/) (module_check.txt · 화면 3종)
+- 메모(자동화): 뷰어 메뉴/다이얼로그는 별도 팝업 창이라 창목록·캡처에 안 보이는 경우가 있고,
+  메뉴 진입은 뷰어가 포그라운드일 때 **실제 키 입력(Alt+D)**으로 동작.
+
 ## 4. 공통 관찰과 함정
 
 ### 4.1 핸들·카운터

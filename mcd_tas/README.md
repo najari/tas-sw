@@ -359,6 +359,9 @@ build\Release\tas_probe.exe [host] [port]
 - **M12 (완료, 2026-10-18)**: GUI Write 검증 (`M12_GUI_WRITE_VERIFICATION.md`) —
   LMU 스크래치 셀 쓰기·Read-back·원값 복원 + 원본 파리티, 실패 모달 재규명(M6 정정).
   **캘리브레이션·검증 항목 전부 완료** — 추가 작업은 새 요구사항에 한함.
+- **M13 (확인, 2026-10-18)**: MCDS Trace Viewer 독립성 확인 (`M13_MCDS_TRACE_VIEWER_CHECK.md`) —
+  Trace Viewer는 `mcdxdas.dll`을 로드하지 않음(자체 TAS 클라이언트 + `mcds_recorder.dll`;
+  같은 폴더에 우리 DLL 배치·연결 후에도 미로드) → DLL 드롭인과 무관.
 - 참고 문서: `C:\work\tas_server_analysis\`(TAS 프로토콜 캡처·분석), `tas-sw` 저장소 문서
 
 ## 라이선스
