@@ -11,6 +11,7 @@ HDR = r"C:\work\mcd_tas\include\mcd_api.h"
 OUT = r"C:\work\mcd_tas\src\proxy_auto.cpp"
 EXCLUDE = {"mcd_execute_txlist_f", "mcd_qry_error_info_f",
            "mcd_qry_state_f", "mcd_open_core_f",
+           "mcd_qry_reg_map_f", "mcd_qry_trig_set_state_f",
            # not exported by the original mcdxdas.dll - keep them absent in
            # the proxy as well so the client sees the same export surface
            "mcd_execute_command_f", "mcd_qry_input_handle_f",

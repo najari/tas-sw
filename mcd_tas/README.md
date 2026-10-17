@@ -4,12 +4,13 @@ MCD(Multi-Core Debug) API v1.1 **"SPRINT Release"** 구현 DLL 프로토타입.
 백엔드는 [TAS](https://github.com/najari/tas-sw) 서버(TCP 24817) — 즉, `mcdxdas.dll`(DAS 백엔드)의
 자매품으로 "MCD API를 TAS로" 제공하는 실험 구현입니다.
 
-- 상태: **M6 완료 (2026-10-18)** — 원본 `mcd_basic_client.exe`에 drop-in(`mcdxdas.dll` 자리)으로
+- 상태: **M7 완료 (2026-10-18)** — 원본 `mcd_basic_client.exe`에 drop-in(`mcdxdas.dll` 자리)으로
   **GUI 전 구간 검증**: Select→애태치, Core Info, GUI Read(`0x70000000`, `0xF0000480=0x00080001`),
   **`State: Debug` / `IP: 0xA0000020`**(정상 시절 파리티 — `mcd_qry_reg_map_f`가 PC 레지스터
   `0xF881FE08`을 제공하고 클라이언트가 이를 폴링), `qry_state` DBGSR 실상태(M5),
-  오류 표시 캘리브레이션(M6 — 원본과 (ret, err) 동일 확인, error string 정본 문구 정합) — 아래
-  "M3~M6 검증" 참조. (M2 애태치: 초기 DEVICE_CONNECT 실패는 USB 허브 경유 문제 — 본체 직결로 해결)
+  오류 표시 캘리브레이션(M6 — 원본과 (ret, err) 동일 확인, error string 정본 문구 정합),
+  reg_map 전량 교차 캘리브레이션(M7 — 원본 그룹 "CPU Registers" 40개: PCXI/PSW/PC/…/D0–D15/A0–A15) — 아래
+  "M3~M7 검증" 참조. (M2 애태치: 초기 DEVICE_CONNECT 실패는 USB 허브 경유 문제 — 본체 직결로 해결)
 - 원칙: **읽기 전용** — 타깃 상태 변경(Run/Stop/Step/Reset)은 의도적으로 미구현(스텁)
 - 소스 언어: C++ (SPRINT `mcd_api.h` 헤더가 `extern "C"` 비가드 선언이라 C에서는 컴파일 불가)
 
@@ -231,6 +232,25 @@ build\Release\tas_probe.exe [host] [port]
   (화면/발췌: `gui_test/m5v_success.png`, `m5v_fail.png`, `m5orig_fail.png`, `m6_direct_read0.png`,
   `gui_test/m5_proxy_log_excerpt.txt`).
 
+### M7 검증 (2026-10-18) — reg_map/reg_groups 원본 교차 캘리브레이션 (읽기 전용)
+
+- 프록시 확장(reg_map 인자·엔트리 덤프 + 첫 count 질의에서 원샷 전체 덤프 + 그룹 프로브 +
+  trig_set_state 덤프)으로 원본 레지스터 DB를 전량 관찰.
+- 원본: 그룹 `id=0 "CPU Registers"` **40개** — `PCXI/PSW/PC/BIV/BTV/ISP/ICR/FCX` +
+  `D0–D15`(0xF881FF00..) + `A0–A15`(0xF881FF80..); 공통 `space=0`, size=32, type=SIMPLE,
+  `rmask=wmask=0x2`, **PC만 side_w=1**. 클라이언트는 count(→40) 후 `start=0/1/2`를 1개씩
+  가져와 `PC`를 찾으면 중단 → PC만 폴링(space=0).
+- 부수: `trig_set_state`는 원본도 전 필드 0(우리 스텁과 동일) · `qry_state`는 원본이
+  `stop_str=''`/`info_str=''` — M5에서 채웠던 필드를 **공백으로 정정**(state만 실값).
+- 수정: `g_reg_desc[40]` 테이블 + `mcd_tas_fill_reg_info()`(원본 값 그대로) ·
+  `qry_reg_groups` id 0 "CPU Registers" n=40 · `qry_reg_map` group 0 서빙(count/fetch) ·
+  `qry_state` 필드 공백화.
+- 검증(`client_stderr18.log`, PID 25064): 호출 패턴이 원본과 일치
+  (`qry_reg_map group=0 start=0 cap=0 → start=0/1/2 cap=1 → RD32 space=0 @0xF881FE08`),
+  `State: Debug`/`IP: 0xA0000020`, 성공 Read `0xF0000480 → 0x00080001` 회귀.
+- 상세 기록: `C:\work\tas_server_analysis\M7_REG_MAP_CROSS_CALIBRATION.md`
+  (화면/발췌: `gui_test/m7_regs_main.png`, `m7_read_regression.png`).
+
 ## 알려진 한계 (M2)
 
 - ~~`mcd_open_core_f`의 성공 경로 미실측~~ → **해결(2026-10-18)**: 실패 원인은 환경(USB 허브 경유) —
@@ -260,6 +280,10 @@ build\Release\tas_probe.exe [host] [port]
   원본 프록시로 (ret, err) 조합이 이미 정확함을 확인, error string을 원본 정본 문구
   ("Read failure for a transaction of the txlist")로 정합. 잔여: Run 실관찰 캘리브레이션(승인 필요)·
   reg groups/trig 확장·(승인 후) Write 및 타깃 제어.
+- **M7 (완료, 2026-10-18)**: reg_map/reg_groups 원본 교차 캘리브레이션
+  (`M7_REG_MAP_CROSS_CALIBRATION.md`) — 원본 "CPU Registers" 40개(PCXI/PSW/PC/…/D0–D15/A0–A15)
+  전량 재현, 호출 패턴·space=0 폴링·qry_state 필드 정합. 잔여: Run 실관찰(승인 필요)·
+  mem_spaces/blocks 교차(선택)·(승인 후) Write 및 타깃 제어.
 - 참고 문서: `C:\work\tas_server_analysis\`(TAS 프로토콜 캡처·분석), `tas-sw` 저장소 문서
 
 ## 라이선스

@@ -37,7 +37,7 @@
 #define MCD_TAS_PROBE_NAME      "mcd_tas probe"
 
 #define MCD_TAS_MEM_SPACE_ID    1u      /* single AM0 memory space      */
-#define MCD_TAS_REG_GROUP_CPU   1u      /* M4 calibration register group */
+#define MCD_TAS_REG_GROUP_CPU   0u      /* M7: reference group id (observed) */
 
 /* CPU0 CSFR window (0xF8810000-0xF881FFFF, TC27x UM Table 3-3) register
  * offsets: PC @FE08 (Table 5-19), DBGSR @FD00 (Table 5-24 / TC1.6 UM
@@ -1377,6 +1377,66 @@ mcd_return_et mcd_qry_active_overlays_f(const mcd_core_st *core,
     return r;
 }
 
+/* ------------------------------------------------------------------ */
+/* M7: reference register map (group 0, "CPU Registers")               */
+/* Captured from the original mcdxdas.dll via the forwarding proxy:    */
+/* 40 registers - PCXI/PSW/PC/BIV/BTV/ISP/ICR/FCX + D0..D15 + A0..A15. */
+/* ------------------------------------------------------------------ */
+typedef struct {
+    const char *name;
+    uint64_t    addr;
+    uint8_t     side_effects_write;
+} mcd_tas_reg_desc_t;
+
+static const mcd_tas_reg_desc_t g_reg_desc[] = {
+    { "PCXI", 0xF881FE00ull, 0u },
+    { "PSW",  0xF881FE04ull, 0u },
+    { "PC",   0xF881FE08ull, 1u },   /* reference: write has side effects */
+    { "BIV",  0xF881FE20ull, 0u },
+    { "BTV",  0xF881FE24ull, 0u },
+    { "ISP",  0xF881FE28ull, 0u },
+    { "ICR",  0xF881FE2Cull, 0u },
+    { "FCX",  0xF881FE38ull, 0u },
+    { "D0",   0xF881FF00ull, 0u },  { "D1",  0xF881FF04ull, 0u },
+    { "D2",   0xF881FF08ull, 0u },  { "D3",  0xF881FF0Cull, 0u },
+    { "D4",   0xF881FF10ull, 0u },  { "D5",  0xF881FF14ull, 0u },
+    { "D6",   0xF881FF18ull, 0u },  { "D7",  0xF881FF1Cull, 0u },
+    { "D8",   0xF881FF20ull, 0u },  { "D9",  0xF881FF24ull, 0u },
+    { "D10",  0xF881FF28ull, 0u },  { "D11", 0xF881FF2Cull, 0u },
+    { "D12",  0xF881FF30ull, 0u },  { "D13", 0xF881FF34ull, 0u },
+    { "D14",  0xF881FF38ull, 0u },  { "D15", 0xF881FF3Cull, 0u },
+    { "A0",   0xF881FF80ull, 0u },  { "A1",  0xF881FF84ull, 0u },
+    { "A2",   0xF881FF88ull, 0u },  { "A3",  0xF881FF8Cull, 0u },
+    { "A4",   0xF881FF90ull, 0u },  { "A5",  0xF881FF94ull, 0u },
+    { "A6",   0xF881FF98ull, 0u },  { "A7",  0xF881FF9Cull, 0u },
+    { "A8",   0xF881FFA0ull, 0u },  { "A9",  0xF881FFA4ull, 0u },
+    { "A10",  0xF881FFA8ull, 0u },  { "A11", 0xF881FFACull, 0u },
+    { "A12",  0xF881FFB0ull, 0u },  { "A13", 0xF881FFB4ull, 0u },
+    { "A14",  0xF881FFB8ull, 0u },  { "A15", 0xF881FFBCull, 0u },
+};
+#define MCD_TAS_REG_COUNT ((uint32_t)(sizeof(g_reg_desc) / sizeof(g_reg_desc[0])))
+
+static void mcd_tas_fill_reg_info(mcd_register_info_st *ri, uint32_t idx)
+{
+    const mcd_tas_reg_desc_t *d = &g_reg_desc[idx];
+
+    memset(ri, 0, sizeof(*ri));
+    /* Reference: registers live in memory space id 0; the basic client
+     * passes that id back for its polling reads. */
+    ri->addr.mem_space_id = 0;
+    ri->addr.address = d->addr;
+    ri->reg_group_id = MCD_TAS_REG_GROUP_CPU;
+    copy_str(ri->regname, sizeof(ri->regname), d->name);
+    ri->regsize = 32;
+    /* Reference: both core-mode masks are 0x2 on every register. */
+    ri->core_mode_mask_read = 0x2;
+    ri->core_mode_mask_write = 0x2;
+    ri->has_side_effects_read = 0;
+    ri->has_side_effects_write = d->side_effects_write;
+    ri->reg_type = MCD_REG_TYPE_SIMPLE;
+    ri->hw_thread_id = 0;
+}
+
 mcd_return_et mcd_qry_reg_groups_f(const mcd_core_st *core,
                                    uint32_t start_index,
                                    uint32_t *num_reg_groups,
@@ -1395,8 +1455,8 @@ mcd_return_et mcd_qry_reg_groups_f(const mcd_core_st *core,
         r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
                     "mcd_qry_reg_groups_f: NULL num_reg_groups");
     } else {
-        /* M4 calibration: expose a single "CPU" register group so the
-         * basic client's register discovery path becomes observable. */
+        /* M7 calibration: mirror the reference mcdxdas.dll layout -
+         * one register group, id 0, "CPU Registers", 40 registers. */
         dbg("mcd_tas: CALL qry_reg_groups start=%u (-> 1 group)",
             (unsigned)start_index);
         *num_reg_groups = 1;
@@ -1404,8 +1464,9 @@ mcd_return_et mcd_qry_reg_groups_f(const mcd_core_st *core,
             mcd_register_group_st *g = &reg_groups[0];
             memset(g, 0, sizeof(*g));
             g->reg_group_id = MCD_TAS_REG_GROUP_CPU;
-            copy_str(g->reg_group_name, sizeof(g->reg_group_name), "CPU");
-            g->n_registers = 1;
+            copy_str(g->reg_group_name, sizeof(g->reg_group_name),
+                     "CPU Registers");
+            g->n_registers = MCD_TAS_REG_COUNT;
         }
     }
     mcd_unlock();
@@ -1429,29 +1490,27 @@ mcd_return_et mcd_qry_reg_map_f(const mcd_core_st *core, uint32_t reg_group_id,
                     "mcd_qry_reg_map_f: NULL num_regs");
     } else {
         uint32_t cap = *num_regs;
-        /* M4: the reference stack exposes the TriCore debug PC register;
-         * the basic client requests it once (group id 0) and then polls
-         * it for the Instruction Pointer display.  A single 32 bit AM0
-         * register reproduces the reference poll cycle.  The number of
-         * entries written must never exceed the caller's capacity. */
-        (void)start_index;
-        dbg("mcd_tas: CALL qry_reg_map group=%u cap=%u",
-            (unsigned)reg_group_id, (unsigned)cap);
-        if ((reg_group_id != 0 && reg_group_id != MCD_TAS_REG_GROUP_CPU) ||
-            start_index != 0) {
+
+        dbg("mcd_tas: CALL qry_reg_map group=%u start=%u cap=%u",
+            (unsigned)reg_group_id, (unsigned)start_index, (unsigned)cap);
+
+        if (reg_group_id != MCD_TAS_REG_GROUP_CPU) {
             *num_regs = 0;
         } else if (cap == 0 || reg_info == NULL) {
-            *num_regs = 1;              /* count query */
+            *num_regs = MCD_TAS_REG_COUNT;  /* count query */
         } else {
-            mcd_register_info_st *ri = &reg_info[0];
-            *num_regs = 1;
-            memset(ri, 0, sizeof(*ri));
-            ri->addr.mem_space_id = MCD_TAS_MEM_SPACE_ID;
-            ri->addr.address = 0xF881FE08ull;
-            ri->reg_group_id = reg_group_id;
-            copy_str(ri->regname, sizeof(ri->regname), "PC");
-            ri->regsize = 32;
-            ri->reg_type = MCD_REG_TYPE_SIMPLE;
+            /* Serve up to cap entries starting at start_index (reference
+             * mcdxdas serves the map one register at a time; the basic
+             * client fetches until it has found "PC"). */
+            uint32_t i, n = 0;
+            for (i = 0; i < cap; i++) {
+                uint32_t idx = start_index + i;
+                if (idx >= MCD_TAS_REG_COUNT)
+                    break;
+                mcd_tas_fill_reg_info(&reg_info[i], idx);
+                n++;
+            }
+            *num_regs = n;
         }
     }
     mcd_unlock();
@@ -1985,26 +2044,9 @@ mcd_return_et mcd_qry_state_f(const mcd_core_st *core, mcd_core_state_st *state)
         memset(state, 0, sizeof(*state));
         if (cs->st_valid) {
             state->state = cs->st_state;
-            if (cs->st_dbgsr != 0u) {
-                uint32_t evtsrc = (cs->st_dbgsr >> 8) & 0x1Fu;
-                if (evtsrc >= 16u && evtsrc <= 23u) {
-                    state->trig_id = evtsrc - 16u;   /* TRnEVT -> trigger n */
-                    snprintf(state->stop_str, sizeof(state->stop_str),
-                             "Trigger %u (TR%uEVT)", (unsigned)state->trig_id,
-                             (unsigned)state->trig_id);
-                } else if (evtsrc == 0u) {
-                    copy_str(state->stop_str, sizeof(state->stop_str),
-                             "External Event (EXEVT)");
-                } else if (evtsrc == 1u) {
-                    copy_str(state->stop_str, sizeof(state->stop_str),
-                             "Core Register Access Event (CREVT)");
-                } else if (evtsrc == 2u) {
-                    copy_str(state->stop_str, sizeof(state->stop_str),
-                             "Software Debug Event (SWEVT)");
-                }
-            }
-            snprintf(state->info_str, sizeof(state->info_str),
-                     "mcd_tas (DBGSR=0x%08X)", (unsigned)cs->st_dbgsr);
+            /* M7 parity with the reference mcdxdas.dll (observed via the
+             * forwarding proxy): event/trig_id/stop_str/info_str stay
+             * empty - only the state field carries the halt information. */
             dbg("mcd_tas: CALL qry_state -> %s (dbgsr 0x%08X)",
                 (cs->st_state == MCD_CORE_STATE_DEBUG)   ? "DEBUG" :
                 (cs->st_state == MCD_CORE_STATE_RUNNING) ? "RUNNING"
@@ -2015,8 +2057,6 @@ mcd_return_et mcd_qry_state_f(const mcd_core_st *core, mcd_core_state_st *state)
              * like the previous calibration so the basic client's UI
              * update path stays alive. */
             state->state = MCD_CORE_STATE_DEBUG;
-            copy_str(state->info_str, sizeof(state->info_str),
-                     "mcd_tas prototype (fallback)");
             dbg("mcd_tas: CALL qry_state -> DEBUG (fallback; DBGSR not read)");
         }
     }

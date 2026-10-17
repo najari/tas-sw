@@ -217,18 +217,6 @@ extern "C" MCD_SHARED_LIBRARY_API mcd_return_et mcd_qry_reg_groups_f(const mcd_c
     return r;
 }
 
-typedef mcd_return_et (*pf_mcd_qry_reg_map_f)(const mcd_core_st *core, uint32_t reg_group_id, uint32_t start_index, uint32_t *num_regs, mcd_register_info_st *reg_info);
-extern "C" MCD_SHARED_LIBRARY_API mcd_return_et mcd_qry_reg_map_f(const mcd_core_st *core, uint32_t reg_group_id, uint32_t start_index, uint32_t *num_regs, mcd_register_info_st *reg_info)
-{
-    static pf_mcd_qry_reg_map_f pf = 0;
-    if (!pf) pf = (pf_mcd_qry_reg_map_f)proxy_orig_proc("mcd_qry_reg_map_f");
-    if (!pf) { proxy_log("FATAL: mcd_qry_reg_map_f missing in orig"); return MCD_RET_ACT_HANDLE_ERROR; }
-    proxy_log("+ mcd_qry_reg_map_f");
-    mcd_return_et r = pf(core, reg_group_id, start_index, num_regs, reg_info);
-    proxy_log("- mcd_qry_reg_map_f -> %d", (int)r);
-    return r;
-}
-
 typedef mcd_return_et (*pf_mcd_qry_reg_compound_f)(const mcd_core_st *core, uint32_t compound_reg_id, uint32_t start_index, uint32_t *num_reg_ids, uint32_t *reg_id_array);
 extern "C" MCD_SHARED_LIBRARY_API mcd_return_et mcd_qry_reg_compound_f(const mcd_core_st *core, uint32_t compound_reg_id, uint32_t start_index, uint32_t *num_reg_ids, uint32_t *reg_id_array)
 {
@@ -346,18 +334,6 @@ extern "C" MCD_SHARED_LIBRARY_API mcd_return_et mcd_qry_trig_set_f(const mcd_cor
     proxy_log("+ mcd_qry_trig_set_f");
     mcd_return_et r = pf(core, start_index, num_trigs, trig_ids);
     proxy_log("- mcd_qry_trig_set_f -> %d", (int)r);
-    return r;
-}
-
-typedef mcd_return_et (*pf_mcd_qry_trig_set_state_f)(const mcd_core_st *core, mcd_trig_set_state_st *trig_state);
-extern "C" MCD_SHARED_LIBRARY_API mcd_return_et mcd_qry_trig_set_state_f(const mcd_core_st *core, mcd_trig_set_state_st *trig_state)
-{
-    static pf_mcd_qry_trig_set_state_f pf = 0;
-    if (!pf) pf = (pf_mcd_qry_trig_set_state_f)proxy_orig_proc("mcd_qry_trig_set_state_f");
-    if (!pf) { proxy_log("FATAL: mcd_qry_trig_set_state_f missing in orig"); return MCD_RET_ACT_HANDLE_ERROR; }
-    proxy_log("+ mcd_qry_trig_set_state_f");
-    mcd_return_et r = pf(core, trig_state);
-    proxy_log("- mcd_qry_trig_set_state_f -> %d", (int)r);
     return r;
 }
 
