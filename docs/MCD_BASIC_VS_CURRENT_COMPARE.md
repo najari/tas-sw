@@ -77,11 +77,17 @@
 → §3의 결론("클라이언트 소프트웨어 차이가 아니며 남은 원인은 물리 계층")이 확증됨 —
 물리 복구 후 원본 클라이언트가 우리 TAS 백엔드 위에서 정상 동작.
 
-잔여 차이(후속):
-- State/IP 필드 — 정상 시절 원본 스택은 `Debug`/`0xA0000020`(← `tas-sw/mcds/crop_13_after_read.png`)
-  이나 현재는 `Unknown`/`XXXXXXXX`. 원인: ① `mcd_qry_state_f` 미구현(UNKNOWN 고정)
-  ② 클라이언트 자체 폴링 RD16 @0x0(mem space 0)을 서버가 0x8D(DATA)로 거부. 앱 동작엔 영향 없음.
-- 읽기 실패 표시: 정상 시절 모달 경고 vs 현재 MCD Events 텍스트만 — 오류 반환 조합 캘리브레이션 후속.
+## 6. M4 — State/IP 실값 복구 (2026-10-18) — §5 잔여 차이 해소
+
+- 원인 규명: 클라이언트는 `mcd_qry_reg_map_f`(group id **0**)로 폴링할 PC 레지스터를 얻는다 —
+  우리 DLL이 0개를 반환해 기본값 `RD16 @(space 0, 0x0)`을 폴링 → 서버 0x8D → UI 갱신 정지.
+- 수정: `mcd_qry_reg_map_f`가 `PC` @ **`0xF881FE08`**(AM0, 32bit — 정상 시절 폴링 주소) 반환,
+  `mcd_qry_state_f`는 `DEBUG`(캘리브레이션) 반환. 용량 초과 기록 결함(2개 → cap=1)도 수정.
+- 결과: 클라이언트가 `RD32 @0xF881FE08`을 폴링(4.6 Hz, 정상 시절 4.4 Hz와 동일) —
+  UI **`State: Debug` / `Instruction Pointer 0xA0000020`** (정상 시절과 동일).
+  GUI Read 회귀 없음(`0xF0000480 → 0x00080001`). 증거: `m4_dropin/`
+- 잔여(후속): ① `mcd_qry_state_f` 실상태 도출(현재 DEBUG 고정 = 캘리브레이션 — Run/Halt 캘리브레이션
+  승인 필요) ② 읽기 실패 시 모달 경고 유무 차이 — (ret, err) 조합 캘리브레이션.
 
 상세·실무 노트: `M3_GUI_DROPIN_NOTES.md`(로컬 분석 폴더) / 스크린샷 `C:\work\mcd_tas\gui_test\`,
-발췌 로그·캡처는 tas-sw 저장소 `m3_dropin/` 참조.
+발췌 로그·캡처는 저장소 `m3_dropin/`·`m4_dropin/` 참조.

@@ -1,4 +1,4 @@
-# MCD API over TAS — 프로토타입 (`mcd_tas`) 구현·검증 노트 (2026-10-17)
+# MCD API over TAS — 프로토타입 (`mcd_tas`) 구현·검증 노트 (2026-10-17 ~ 18)
 
 `mcdxdas.dll`(DAS 백엔드)과 **동일한 MCD API v1.1 "SPRINT Release" 계약(54개 함수)을
 TasServer(24817) 백엔드로** 구동하는 프로토타입 DLL(`mcd_tas.dll`)의 구현 범위와 실서버 검증 결과.
@@ -14,17 +14,19 @@ TasServer(24817) 백엔드로** 구동하는 프로토타입 DLL(`mcd_tas.dll`)�
 |---|---|---|
 | M1 | 초기화·서버·시스템/디바이스/코어 열거 (11함수) | 완료·검증 |
 | M2 | 코어 열기(세션 + 핫 애태치)·메모리 공간 열거·PL0 읽기/쓰기 (6함수) | 완료·검증 — 애태치 성공 경로 확보(§3-D; §3-C의 실패는 USB 허브 환경 문제였음) |
-| M3 | 원본 `mcd_basic_client.exe` drop-in(`mcdxdas.dll` 자리) GUI 구동 | **GUI 검증 완료(§3-E)** — Select/애태치/Core Info/Read. 잔여: qry_state 실상태·매핑 캘리브레이션 |
+| M3 | 원본 `mcd_basic_client.exe` drop-in(`mcdxdas.dll` 자리) GUI 구동 | **GUI 검증 완료(§3-E)** — Select/애태치/Core Info/Read |
+| M4 | State/IP 실값 복구 (`qry_reg_map` PC 레지스터 + `qry_state` 캘리브레이션) | **완료·검증(§3-F)** — `State: Debug / IP: 0xA0000020` (정상 시절 파리티) |
 
 ## 1. 구현 범위
 
-54개 함수 중 **17개 구현 + 37개 정직한 스텁**(`MCD_ERR_FN_UNIMPLEMENTED` + 함수명 메시지, `mcd_qry_error_info_f`로 조회).
+54개 함수 중 **18개 구현 + 36개 스텁**(미구현은 `MCD_ERR_FN_UNIMPLEMENTED` + 함수명 메시지, `mcd_qry_error_info_f`로 조회).
 
 - **M1 (11)**: `mcd_initialize_f` `mcd_exit_f` `mcd_qry_servers_f` `mcd_open_server_f` `mcd_close_server_f`
   `mcd_set_server_config_f` `mcd_qry_server_config_f` `mcd_qry_systems_f` `mcd_qry_devices_f`
   `mcd_qry_cores_f` `mcd_qry_error_info_f`
 - **M2 (6)**: `mcd_open_core_f` `mcd_close_core_f` `mcd_qry_mem_spaces_f` `mcd_execute_txlist_f`
   `mcd_qry_state_f` `mcd_qry_max_payload_size_f`
+- **M4 (1)**: `mcd_qry_reg_map_f` (group 0/1 → 단일 `PC` 레지스터; `mcd_qry_reg_groups_f`도 'CPU' 그룹·1레지스터로 보강)
 
 ### 1.1 M2 동작 요약
 
@@ -33,7 +35,9 @@ TasServer(24817) 백엔드로** 구동하는 프로토타입 DLL(`mcd_tas.dll`)�
   읽기 블록은 RDBLK(8정렬·8배수·≤1024B), 프레임 한도(32건/1060B/1040B — §8.2 실측값)는 내부에서 자동 분할.
   첫 실패 트랜잭션 기준으로 `num_tx_ok`/`num_bytes_ok` 집계 후 중단 보고.
 - `mcd_qry_mem_spaces_f` — 메모리 공간 1개: id **1** = AM0(TAS 주소 맵 0 = 타깃 물리 접근), physical, 8bit MAU, LE.
-- `mcd_qry_state_f` — 아직 `MCD_CORE_STATE_UNKNOWN` 고정(정직 — 실상태는 후속).
+- `mcd_qry_reg_map_f` (M4) — group 0/1에 단일 `PC` 레지스터(AM0, `0xF881FE08`, 32bit) 제공.
+  원본 `mcd_basic_client.exe`는 이 주소를 폴링해 `Instruction Pointer`를 표시(요청 용량 cap 준수).
+- `mcd_qry_state_f` — **`MCD_CORE_STATE_DEBUG` 고정 반환**(M4 캘리브레이션 — UI 파리티. 실상태 도출은 후속).
 - 에러 매핑: TAS PL1 `0x46→DEVICE_LOCKED`, `0x44/0x48→DEVICE_ACCESS`, `0x32→SERVER_LOCKED`,
   기타→`CONNECTION`(0x200) — 원 TAS 코드는 오류 메시지에 포함.
 
@@ -105,9 +109,32 @@ AM0 접근의 전제 조건. AM15(서버 내부)는 DC 없이 SS 직후부터 �
 - GUI Read: `0x70000000` → `0x00000000` ([read_70000000.png](../m3_dropin/read_70000000.png));
   `0xF0000480` → **`0x00080001`** — 정상 시절 시그니처와 일치 ([read_f0000480.png](../m3_dropin/read_f0000480.png)).
   발췌 로그: [m3_dropin/log_excerpt.txt](../m3_dropin/log_excerpt.txt)
-- 잔여 차이: State/IP 필드 `Unknown`/`XXXXXXXX` (`mcd_qry_state_f` 미구현 + 클라이언트 자체 RD16@0x0 폴링 0x8D) — 후속.
+- 잔여 차이였던 State/IP 필드(`Unknown`/`XXXXXXXX`)는 **§3-F(M4)에서 해소**.
 - 실무 노트(주소 `0x` 접두 필수 = base-0 파서, 모달 다이얼로그, 픽셀 클릭 등):
   [MCD_BASIC_VS_CURRENT_COMPARE.md](MCD_BASIC_VS_CURRENT_COMPARE.md) §5
+
+### F. M4 — State/IP 실값 복구 (2026-10-18) — 정상 시절 파리티
+
+정상 시절 캡처(CONN3341) 폴링의 3번째 프레임 = **AM0 RD32 `0xF881FE08` → `0xA0000020`** (UI `Instruction Pointer`와 일치).
+`0xF881FE08`은 원본 `mcdxdas.dll`이 제공하는 장치별 디버그 레지스터 주소. 계측(`MCD_TAS_LOG=1`)으로 규명한 클라이언트 동작:
+
+- 코어 열기 직후 `mcd_qry_reg_map_f`(**group id 0**)로 등록된 PC 레지스터를 얻고, 매 ≈220 ms 사이클
+  `mcd_qry_state_f` + 그 주소 RD32 폴링으로 UI(State/IP)를 갱신 — **UI 갱신은 성공 폴링에 게이트**
+  (빈 레지스터 맵 → 기본값 `RD16 @(space 0, 0x0)` 폴링 → 0x8D 실패 → 갱신 정지가 M3 잔여 차이의 원인).
+- 수정: `qry_reg_map`(group 0/1)이 `PC` @ `0xF881FE08`(AM0, 32bit) 반환 + `qry_state` = `DEBUG`.
+  구현 결함 1건(요청 cap=1에 2개 기록 — 용량 초과)도 단일 레지스터로 수정.
+
+검증 결과:
+
+- 클라이언트가 즉시 `RD32 @0xF881FE08` 폴링(**4.6 Hz**, 정상 시절 4.4 Hz와 동일) — 응답 `0xA0000020`, **오류 0**
+  (`rq: 01 B0 FF 00 C4 FF 01 00 00 15 81 F8 00 25 08 FE 00 B1 01 00` → `rsp: 00 B0 88 08 01 25 01 80 20 00 00 A0 00 B1 C4 FF`).
+- UI: **`State: Debug` / `Instruction Pointer 0xA0000020`** ([m4_dropin/state_ip_recovered.png](../m4_dropin/state_ip_recovered.png))
+  — 정상 시절 [mcds/crop_13_after_read.png](../mcds/crop_13_after_read.png)와 동일. MCD Events 비어 있음(실패 0).
+- 회귀: GUI Read `0xF0000480` → `0x00080001` ([m4_dropin/read_regression.png](../m4_dropin/read_regression.png)).
+- 발췌 로그: [m4_dropin/log_excerpt.txt](../m4_dropin/log_excerpt.txt)
+
+후속: `mcd_qry_state_f` 실상태 도출(현재 DEBUG 고정 = 캘리브레이션 — 디버그 레지스터 의미 규명 + Run/Halt
+캘리브레이션 승인 필요), 읽기 실패 시 모달 경고 유무 차이 캘리브레이션.
 
 ## 4. 구현 메모 (정본 근거)
 
@@ -126,18 +153,19 @@ AM0 접근의 전제 조건. AM15(서버 내부)는 DC 없이 SS 직후부터 �
 - ~~**DC 성공 경로 미실측** — 어댑터 정상화 후 `--attach` 재실행 (성공 시 `device_type=0x401DA083`,
   `addr_map_mask` `0x8000→0x8001` 전환 기대).~~ → **해결(§3-D)**: USB 허브→본체 직결로 복구 —
   애태치 성공, `device_type=0x401DA083`·`addr_map_mask=0x8001` 확인.
-- `mcd_qry_state_f`=UNKNOWN(State/IP 필드 `Unknown`/`XXXXXXXX` — 원본 시절 `Debug`/`0xA0000020`),
+- `mcd_qry_state_f`=DEBUG 고정(캘리브레이션 — 실상태 Run/Halt 도출은 후속),
   메모리 공간 1개(AM0), 캐시/가상 공간·메모리 블록 미노출.
 - 트랜잭션 리스트 중단 시 이미 전송된 프레임은 취소 불가(서버가 전량 실행) — 집계만 중단 시점 기준.
 - 트리거/채널/트레이스/레지스터/리셋 등은 스텁. 단일 전역 임계구역 직렬화(재진입 없음).
-- **다음(M3+)**: `mcd_qry_state_f` 실상태(PC/stop info), 매핑 캘리브레이션, (승인 후) Write 검증,
-  reg groups/trig, 오류 반환 조합 캘리브레이션(실패 표시 방식).
+- **다음(M4+)**: `mcd_qry_state_f` 실상태(Run/Halt·stop info — 캘리브레이션 승인 필요), 매핑 캘리브레이션,
+  (승인 후) Write 검증, reg groups/trig 확장, 오류 반환 조합 캘리브레이션(실패 표시 방식).
 
 ## 부록. 산출물
 
 - 검증 로그: [mcd_tas_probe.log](../logs/mcd_tas_probe.log) · [mcd_tas_smoke.log](../logs/mcd_tas_smoke.log) · [mcd_tas_attach.log](../logs/mcd_tas_attach.log)
   · 성공 재검증(2026-10-18): [mcd_tas_probe_idcode_ok.log](../logs/mcd_tas_probe_idcode_ok.log) · [mcd_tas_attach_ok.log](../logs/mcd_tas_attach_ok.log)
 - M3 GUI 캡처·발췌: [m3_dropin/](../m3_dropin/) (select · main_after_attach · coreinfo · read_70000000 · read_f0000480 · log_excerpt.txt)
+- M4 State/IP 복구 캡처·발췌: [m4_dropin/](../m4_dropin/) (state_ip_recovered · read_regression · log_excerpt.txt)
 - 정상 시절 vs 현재 대조(§5 = M3 재검증): [MCD_BASIC_VS_CURRENT_COMPARE.md](MCD_BASIC_VS_CURRENT_COMPARE.md)
 - 캡처 근거(참조 시퀀스): [mcds/](../mcds/) conn 3341(애태치+AM0), conn 4085(MCDS 폴링) — 해설 §8
 - 도구 분석(대응 UI/동작): [MCD_TOOLS_ANALYSIS.md](MCD_TOOLS_ANALYSIS.md)

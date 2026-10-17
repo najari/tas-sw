@@ -1,0 +1,34 @@
+# (발췌) mcd_basic_client.exe + mcd_tas.dll(drop-in, mcdxdas.dll 자리) — M4 State/IP 복구 로그
+# 출처: C:\work\mcd_tas\drop_in\client_stderr10.log (첫 성공) · client_stderr12.log (최종 빌드)
+# 일자: 2026-10-18
+
+[원인 계측 — client_stderr9.log: qry_state 63회 모두 DEBUG 반환에도 UI 갱신 없음(성공 폴링에 게이트).
+  qry_reg_map(group=0) 1회, 폴링은 기본값 RD16 @(space 0, 0x0) → 0x8D — State/IP Unknown/XXXXXXXX의 원인]
+
+[수정 후 첫 성공 — stderr10: qry_reg_map이 group 0에 PC 레지스터(0xF881FE08) 제공]
+mcd_tas: CALL qry_reg_map group=0 cap=0
+mcd_tas: CALL qry_reg_map group=0 cap=1
+mcd_tas: CALL qry_state -> DEBUG
+mcd_tas: tx[0] R space=1 addr=0xF881FE08 bytes=4 width=160
+[rw] rq cnt 65476 frame_items 1: 01 B0 FF 00 C4 FF 01 00 00 15 81 F8 00 25 08 FE 00 B1 01 00
+[rw] rsp 16 bytes: 00 B0 88 08 01 25 01 80 20 00 00 A0 00 B1 C4 FF
+mcd_tas: CALL qry_state -> DEBUG
+mcd_tas: tx[0] R space=1 addr=0xF881FE08 bytes=4 width=160
+[rw] rq cnt 65477 frame_items 1: 01 B0 FF 00 C5 FF 01 00 00 15 81 F8 00 25 08 FE 00 B1 01 00
+[rw] rsp 16 bytes: 00 B0 88 08 01 25 01 80 20 00 00 A0 00 B1 C5 FF
+  … 약 220ms 주기(4.6Hz — 정상 시절 4.4Hz와 동일), 실패 0. 응답 데이터 20 00 00 A0 = 0xA0000020.
+  (rq: BASE32(0xF881)+RD32 offset 0xFE08 = AM0 0xF881FE08)
+
+[최종 빌드 — stderr12: 단일 PC 레지스터 + 요청 용량(cap=1) 준수]
+mcd_tas: CALL qry_reg_map group=0 cap=0
+mcd_tas: CALL qry_reg_map group=0 cap=1
+mcd_tas: CALL qry_state -> DEBUG
+mcd_tas: tx[0] R space=1 addr=0xF881FE08 bytes=4 width=144
+[rw] rq cnt 65476 frame_items 1: 01 B0 FF 00 C4 FF 01 00 00 15 81 F8 00 25 08 FE 00 B1 01 00
+[rw] rsp 16 bytes: 00 B0 88 08 01 25 01 80 20 00 00 A0 00 B1 C4 FF
+  … 42 폴링 / 0 실패
+
+[GUI 확인]
+- state_ip_recovered.png — State: Debug / Instruction Pointer: 0xA0000020
+  (정상 시절 mcds/crop_13_after_read.png와 동일 값)
+- read_regression.png — GUI Read 0xF0000480 → 0x00080001 (회귀 없음)
