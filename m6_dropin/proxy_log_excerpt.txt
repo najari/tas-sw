@@ -1,0 +1,20 @@
+=== proxy session 2026-10-18 04:09:12 orig=C:\work\mcd_tas\mcdorig_dropin\mcdxdas_orig.dll handle=00007FFDCBC70000 ===
+resolve mcd_initialize_f -> 00007FFDCBC72AF0
+
+=== SUCCESSFUL READ (0xF0000480) ===
++ execute_txlist: core=00007FFDCBCD8990 txlist=000000B7A1CFEBD0
+    num_tx=1 num_tx_ok(pre)=0
+    tx[0] PRE: at=1 opts=0x0 space=0 addr=0xF0000480 bytes=4 width=0 mode=0 data=000000B7A1CFECA0
+- execute_txlist -> 0
+    num_tx_ok(post)=1
+    tx[0] POST: num_bytes_ok=4 data=[01 00 08 00 ]
+- qry_state -> 0: state=3 event=0x0 hw_thread=0 trig=0 stop='' info=''
+
+=== FAILED READ (0xE00000) ===
++ execute_txlist: core=00007FFDCBCD8990 txlist=000000B7A1CFEBD0
+    num_tx=1 num_tx_ok(pre)=0
+    tx[0] PRE: at=1 opts=0x0 space=0 addr=0xE00000 bytes=4 width=0 mode=0 data=000000B7A1CFECA0
+- execute_txlist -> 3
+    num_tx_ok(post)=0
+    tx[0] POST: num_bytes_ok=0 data=[00 00 00 00 ]
+- qry_error_info: return_status=3 code=0x2100 events=0x0 str='Read failure for a transaction of the txlist'

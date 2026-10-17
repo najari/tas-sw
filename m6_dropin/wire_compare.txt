@@ -1,0 +1,36 @@
+== M6 wire compare — failed user read (RD32) ==
+
+[정상 시절] mcds/tas_capture (conn 3341, 19:03:39, cnt 0x014B)
+  c2s: 01 B0 FF 00 4B 01 01 00 | 00 25 00 00 | 00 B1 01 00
+       (PL0_START cnt=0x014B mask=0x0001; RD32 @0x0000; END n_rw=1)
+  s2c: B0 84 08 | 00 25 00 8D | 00 B1 4B 01
+       (RD32 rsp wlrd=0 err=0x8D PL0_DATA; END echo cnt=0x014B)
+
+[현재(우리 DLL)] drop_in/client_stderr16.log (2026-10-18, 실패 Read 0xE00000)
+  rq  cnt 78: 01 B0 FF 00 4E 00 01 00 | 00 15 E0 00 | 00 25 00 00 | 00 B1 01 00
+              (BASE32=0xE000 + RD32 @0x0000 -> 0xE00000)
+  rsp 12B:    00 B0 90 08 | 00 25 00 8D | 00 B1 4E 00
+              (RD32 rsp wlrd=0 err=0x8D — 정상 시절과 동일한 실패 응답 형태)
+
+[원본 DLL API 반환(프록시, mcdorig_dropin/proxy_log.txt)]
+  - execute_txlist -> 3 ; num_tx_ok(post)=0 ; num_bytes_ok=0 ; data=[00 00 00 00]
+  - qry_error_info: return_status=3 code=0x2100 events=0x0
+      str='Read failure for a transaction of the txlist'
+  → 우리 구현과 비트 단위 동일(수정 전·후 모두 ret/err 동일; error_str만 정합 대상)
+
+== M6 wire compare — successful read (RD32 @0xF0000480) ==
+
+[정상 시절] conn 3341 attach 시퀀스 — B32:F000 + R32:0480, 응답 R32:0x80001
+
+[현재(우리 DLL)] drop_in/client_stderr17.log (2026-10-18)
+  rq  cnt 67: 01 B0 FF 00 43 00 01 00 | 00 15 00 F0 | 00 25 80 04 | 00 B1 01 00
+              (BASE32=0xF000 + RD32 @0x0480 — 정상 시절과 동일 와이어 형태)
+  rsp 16B:    00 B0 84 08 | 01 25 01 80 01 00 08 00 | 00 B1 43 00
+              (데이터 0x00080001 — 정상 시절 R32:0x80001과 동일)
+
+== 참고 — 원본 스택 실행에서 실패 Read의 표시 동작 (모달 없음) ==
+
+[원본 DLL + 프록시] mcdorig_dropin (addr 0xE00000)  -> gui_test/m5orig_fail.png
+[원본 DLL 직접(프록시 없이)] mcdorig_direct (addr 0) -> gui_test/m6_direct_read0.png
+  두 경우 모두: 모달 없음, MCD Events 박스 공백 — 우리 구현과 동일.
+  (정상 시절 crop_13의 모달은 현재 환경에서 재현되지 않음 — 트리거 미상.)

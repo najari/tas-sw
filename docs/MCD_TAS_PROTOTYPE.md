@@ -18,6 +18,7 @@ TasServer(24817) 백엔드로** 구동하는 프로토타입 DLL(`mcd_tas.dll`)�
 | M4 | State/IP 실값 복구 (`qry_reg_map` PC 레지스터 + `qry_state` 캘리브레이션) | **완료·검증(§3-F)** — `State: Debug / IP: 0xA0000020` (정상 시절 파리티) |
 | (참고) | TC27x 디버그 레지스터 규명 — PC `0xF881FE08`·DBGSR `0xF881FD00` (해독·라이브 검증) | 완료(§3-G) — [TC27X_DEBUG_REGISTERS.md](TC27X_DEBUG_REGISTERS.md) |
 | M5 | `qry_state` 실상태 — DBGSR 기반 도출 (세션 1회 판독·캐시) | **완료·검증(§3-H)** — `State: Debug` 파리티 · 4.6 Hz · 실패 0 |
+| M6 | 읽기 실패 오류 표시 캘리브레이션 — (ret, err) 조합이 이미 정확함을 원본 프록시로 확인; error string을 원본 정본 문구로 정합 | **완료·검증(§3-I)** — `FAIL: Read failure for a transaction of the txlist` · 원본 직접 실행에서도 표시 동작 동일(모달 재현 불가) |
 
 ## 1. 구현 범위
 
@@ -167,6 +168,28 @@ DBGSR(`0xF881FD00`)을 1회 RD32(읽기 전용)로 읽어 해독·캐시(세션 
 - 증거: [m5_dropin/](../m5_dropin/) (state_main · read_regression · log_excerpt.txt)
 - 한계: 타깃 정지 상태(HALT=01b)라 RUNNING 경로 미실측 — 실관찰 캘리브레이션은 별도 승인 필요.
 
+### I. M6 — 읽기 실패 오류 표시 캘리브레이션 (error string 정합) (2026-10-18)
+
+원본 `mcdxdas.dll` 프록시 비교로 실패한 사용자 Read의 (ret, err) 조합이 우리 구현과
+**비트 단위 동일**임을 확인: `MCD_RET_ACT_HANDLE_ERROR(3)` / `MCD_ERR_TXLIST_READ(0x2100)` /
+`events=0` / `num_tx_ok=0` / `num_bytes_ok=0`. 따라서 (ret, err) 변경 **불필요** —
+캘리브레이션은 `error_str` 문구 정합으로 완료.
+
+- 원본 보고 문구(정본): `qry_error_info` → `"Read failure for a transaction of the txlist"`
+  (Infineon MCD API `MCD_ERR_TXLIST_READ` 정본 문구).
+- 수정: `mcd_execute_txlist_f` 항목 실패 분기의 `err_set` 메시지를 원본 정본 문구로 교체
+  (Read/Write), 진단 상세(주소/PL0 err)는 별도 `dbg()`로 보존.
+- 검증(`client_stderr16.log`, MCD_TAS_LOG=1): `FAIL: Read failure for a transaction of the txlist` →
+  `CALL qry_error_info ('Read failure for a transaction of the txlist')` — 원본과 문구 일치.
+- **재검토(추가 실험)**: 원본 DLL **직접(프록시 없이)**·주소 기본값 `0`/`0xE00000` 재현에서도
+  모달·박스 표시가 나타나지 않음(우리와 동일) — "원본 모달 vs 우리 무표시" 차이는 현재
+  환경에서 재현 불가. 정상 시절 와이어(`RD32 @0x0000`→`00 25 00 8D`, s2c cnt 0x014B)와
+  우리 응답도 동일. 정상 시절 `crop_13` 모달의 트리거는 미상(참고 관찰).
+- 성공 Read 회귀(로그 실증, `client_stderr17.log`): 요청 `B32:F000|R32:0480`(정상 시절과 동일
+  와이어 형태) → 응답 `01 00 08 00`(0x00080001) — GUI 표시 확인.
+- 증거: [m6_dropin/](../m6_dropin/) (proxy_log_excerpt.txt · wire_compare.txt · ours/orig screenshots)
+- 상세: `M6_ERROR_DISPLAY_CALIBRATION.md` (tas_server_analysis, 로컬)
+
 ## 4. 구현 메모 (정본 근거)
 
 - **프레임 빌더** (`tas_pkt_handler_rw.cpp` 규칙, §8 실측과 일치):
@@ -189,8 +212,10 @@ DBGSR(`0xF881FD00`)을 1회 RD32(읽기 전용)로 읽어 해독·캐시(세션 
 - 트랜잭션 리스트 중단 시 이미 전송된 프레임은 취소 불가(서버가 전량 실행) — 집계만 중단 시점 기준.
 - 트리거/채널/트레이스/레지스터/리셋 등은 스텁. 단일 전역 임계구역 직렬화(재진입 없음).
 - **M5(완료, 2026-10-18)**: `qry_state` 실상태(§3-H) — DBGSR 세션 1회 판독·캐시, HALT→DEBUG/RUNNING.
-- **다음(M5+)**: Run 실관찰 캘리브레이션(승인 필요), 매핑 캘리브레이션, (승인 후) Write 검증,
-  reg groups/trig 확장, 오류 반환 조합 캘리브레이션(실패 표시 방식).
+- **M6(완료, 2026-10-18)**: 읽기 실패 오류 표시 캘리브레이션(§3-I) — 원본 프록시로 (ret, err) 조합
+  이미 정확함을 확인, error string을 원본 정본 문구("Read failure for a transaction of the txlist")로 정합.
+- **다음(M6+)**: Run 실관찰 캘리브레이션(승인 필요), 매핑 캘리브레이션, (승인 후) Write 검증,
+  reg groups/trig 확장.
 
 ## 부록. 산출물
 
@@ -200,6 +225,7 @@ DBGSR(`0xF881FD00`)을 1회 RD32(읽기 전용)로 읽어 해독·캐시(세션 
 - M4 State/IP 복구 캡처·발췌: [m4_dropin/](../m4_dropin/) (state_ip_recovered · read_regression · log_excerpt.txt)
 - M4+ 디버그 레지스터 검증 캡처·발췌: [tc27x_dbg_regs/](../tc27x_dbg_regs/) (dbgsr_read · pc_read · cpuid_read · log_excerpt.txt)
 - M5 실상태 검증 캡처·발췌: [m5_dropin/](../m5_dropin/) (state_main · read_regression · log_excerpt.txt)
+- M6 오류 표시 캘리브레이션 캡처·발췌: [m6_dropin/](../m6_dropin/) (proxy_log_excerpt.txt · wire_compare.txt · ours_fail/ours_success · orig_proxy_no_modal/orig_direct_no_modal)
 - 정상 시절 vs 현재 대조(§5 = M3 재검증): [MCD_BASIC_VS_CURRENT_COMPARE.md](MCD_BASIC_VS_CURRENT_COMPARE.md)
 - 캡처 근거(참조 시퀀스): [mcds/](../mcds/) conn 3341(애태치+AM0), conn 4085(MCDS 폴링) — 해설 §8
 - 도구 분석(대응 UI/동작): [MCD_TOOLS_ANALYSIS.md](MCD_TOOLS_ANALYSIS.md)
