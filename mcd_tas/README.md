@@ -63,7 +63,25 @@ build\Release\tas_probe.exe [host] [port]
 (`mcd_qry_error_info_f`로 조회 가능): `run_until`·`step`·`execute_command`,
 CHL 5종(open/send/receive/reset/close), `qry_input_handle`
 — 이 중 CHL 5종+`qry_input_handle`은 **원본도 스텁/미export**라 파리티.
-(run/stop **M16** · reset **M17** · 트리거 **M18** · trace·잔여 캘리브레이션 **M19** — 아래 섹션)
+(run/stop **M16** · reset **M17** · 트리거 **M18** · trace·잔여 캘리브레이션 **M19** · SPR 변환 **M20** — 아래 섹션)
+
+## M20 구현 — SPR 로컬→전역 변환 (2026-10-18)
+
+- `mcd_execute_txlist_f`에 **코어 로컬 스크래치패드 윈도 변환** 추가: 원본(DAS 경유)은 로컬 주소를
+  대상 코어 기준으로 해석하지만 TAS는 전역 버스 뷰만 알기 때문에, 로컬 주소는 PL0 버스 오류였음(M12 실증)
+  - local DSPR `0xD0000000..0xD001FFFF` → `0x70000000 - core*0x10000000` (코어별 버스 별칭)
+  - local PSPR `0xC0000000..0xC0007FFF` → `0x70100000 - core*0x10000000`
+  - 근거: TC27x UM Table 5-10(코어별 `PSPR_base/DSPR_base`), 로컬 주소는 항상 `C0000000/D0000000`.
+    윈도는 파워오브투로 넉넉히(캐시 연속 매핑 포함) — 미구현 영역은 양쪽 모두 실패라 안전
+  - 읽기·쓰기 공통 경로(스플릿 이전)에서 변환, `MCD_TAS_LOG`에 `local SPR ... -> bus ...` 라인 기록
+- 검증(`smoke --spr`, 읽기 전용): 수정 전 로컬 SPR 읽기 **PL0 오류(rc 3, 0x2100)** → 수정 후
+  `rc 0, ok 2` + **원본 mcdxdas.dll(1.14.12)과 동일 결과(파리티)** · `--attach --trace` 회귀 ok
+- 검증(`smoke --sprw`, 승인 하 쓰기): 로컬 주소로 패턴(`0x5AA55AA5`) 쓰기 → 버스 별칭에서 리드백 일치
+  → 원값(0) 복원 확인 — **원본과 동일 동작(파리티)**, 입력 상태 복원 불변식 유지
+- GUI 검증(원본 `mcd_basic_client.exe` + 우리 DLL): 로컬 주소 `0xD0000000`으로 Write/Read —
+  리드백 `0x5AA55AA5`(M15 북엔드 재현) → 원값 복원 `0x00000000` · DLL 로그에
+  `local SPR 0xD0000000 -> bus 0x70000000 (core 0)` 실증
+- 배포: `drop_in\mcdxdas.dll` = SHA256 `919755FBAF32D19E…` (M20)
 
 ## M19 구현 — trace·잔여 함수 원본 교차 캘리브레이션 (2026-10-18)
 
@@ -405,7 +423,8 @@ CHL 5종(open/send/receive/reset/close), `qry_input_handle`
   실측 완료; Run(HALT=00b) 실관찰 캘리브레이션은 타깃 상태 전환 승인 필요.
 - 메모리 공간 1개(AM0, id=1 잠정). 캐시/가상 공간·메모리 블록은 미노출.
 - `mcd_execute_txlist_f` 중단 시 이미 전송된 프레임은 취소 불가(서버가 전량 실행) — 집계 결과만 중단 시점 기준.
-- 트리거/채널/트레이스/레지스터/리셋 등은 미구현(스텁).
+- 트리거(M18)·리셋(M17)·run/stop(M16)은 실구현; 채널/trace API는 원본도 미구현(파리티 스텁),
+  `step`/`run_until`은 미구현(DAP 필요).
 - 스레드 안전성: 단일 전역 임계구역으로 직렬화(재진입 없음).
 - 매핑 상수(TC27x 이름, core_id 등)는 잠정 — 실 `mcdxdas.dll`과 교차 캘리브레이션 TODO.
 

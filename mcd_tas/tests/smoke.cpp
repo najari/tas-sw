@@ -103,6 +103,8 @@ int main(int argc, char **argv)
     int rst = 0;
     int trig = 0;
     int trace = 0;
+    int spr = 0;
+    int sprw = 0;
     mcd_return_et r;
     uint32_t n;
     uint32_t i;
@@ -118,15 +120,21 @@ int main(int argc, char **argv)
             trig = 1;
         if (strcmp(argv[i], "--trace") == 0)
             trace = 1;
+        if (strcmp(argv[i], "--spr") == 0)
+            spr = 1;
+        if (strcmp(argv[i], "--sprw") == 0)
+            sprw = 1;
     }
 
     printf("== mcd_tas smoke test ==\n");
-    printf("dll: %s\ncfg: %s\nmode: %s%s%s%s%s\n\n", dll, cfg ? cfg : "(default)",
+    printf("dll: %s\ncfg: %s\nmode: %s%s%s%s%s%s%s\n\n", dll, cfg ? cfg : "(default)",
            attach ? "with core attach (--attach)" : "read-only",
            runstop ? " + run/stop (--runstop)" : "",
            rst ? " + reset (--rst)" : "",
            trig ? " + trigger (--trig)" : "",
-           trace ? " + trace probe (--trace)" : "");
+           trace ? " + trace probe (--trace)" : "",
+           spr ? " + SPR translation (--spr)" : "",
+           sprw ? " + SPR write check (--sprw)" : "");
 
     h = LoadLibraryA(dll);
     if (h == NULL) {
@@ -382,6 +390,142 @@ int main(int argc, char **argv)
                                (unsigned)ei.error_code, ei.error_str,
                                (unsigned)tl.num_tx_ok);
                     }
+                }
+
+                /* M20: local SPR window translation (--spr).  The
+                 * reference implementation resolves the core-local
+                 * scratchpad windows for the addressed core; TAS only
+                 * knows the global bus view.  Verify that the local
+                 * addresses reach the same cells as the core's bus
+                 * aliases (read-only, CPU0):
+                 *   DSPR local 0xD0000000 == bus 0x70000000
+                 *   PSPR local 0xC0000000 == bus 0x70100000 */
+                if (spr) {
+                    static const struct {
+                        unsigned long long loc, bus;
+                        const char *name;
+                    } pairs[2] = {
+                        { 0xD0000000ull, 0x70000000ull, "DSPR" },
+                        { 0xC0000000ull, 0x70100000ull, "PSPR" },
+                    };
+                    unsigned k;
+
+                    printf("  -- M20 SPR translation check --\n");
+                    for (k = 0; k < 2; k++) {
+                        uint8_t bl[4], bb[4];
+                        mcd_tx_st tx[2];
+                        mcd_txlist_st tl;
+
+                        memset(tx, 0, sizeof(tx));
+                        memset(bl, 0, sizeof(bl));
+                        memset(bb, 0, sizeof(bb));
+                        tx[0].addr.mem_space_id = 0;
+                        tx[0].addr.address = pairs[k].loc;
+                        tx[0].access_type = MCD_TX_AT_R;
+                        tx[0].num_bytes = 4;
+                        tx[0].data = bl;
+                        tx[1].addr.mem_space_id = 0;
+                        tx[1].addr.address = pairs[k].bus;
+                        tx[1].access_type = MCD_TX_AT_R;
+                        tx[1].num_bytes = 4;
+                        tx[1].data = bb;
+                        tl.tx = tx;
+                        tl.num_tx = 2;
+                        tl.num_tx_ok = 0;
+
+                        r = f_txlist(core, &tl);
+                        printf("       %s local 0x%08llX -> %02X %02X %02X %02X"
+                               " | bus 0x%08llX -> %02X %02X %02X %02X"
+                               " (rc %d, ok %u)\n",
+                               pairs[k].name, pairs[k].loc,
+                               bl[0], bl[1], bl[2], bl[3],
+                               pairs[k].bus,
+                               bb[0], bb[1], bb[2], bb[3],
+                               (int)r, (unsigned)tl.num_tx_ok);
+                        if (r != MCD_RET_ACT_NONE || tl.num_tx_ok != 2) {
+                            mcd_error_info_st ei;
+                            f_err(NULL, &ei);
+                            printf("       error 0x%08x: %s\n",
+                                   (unsigned)ei.error_code, ei.error_str);
+                        }
+                        CHK(r == MCD_RET_ACT_NONE && tl.num_tx_ok == 2 &&
+                                memcmp(bl, bb, 4) == 0,
+                            "local SPR reads match the bus alias");
+                    }
+                }
+
+                /* M20: SPR write-path check (--sprw, STATE-CHANGING).
+                 * Write a pattern through the LOCAL DSPR address, verify
+                 * it through the bus alias, then restore the original
+                 * cell content (read first) - the M12/M15 procedure. */
+                if (spr && sprw) {
+                    const uint32_t pat = 0x5AA55AA5u;
+                    uint32_t orig = 0, v1 = 0, v2 = 0, v3 = 0;
+                    int ok_bus, ok_loc;
+                    mcd_tx_st tx;
+                    mcd_txlist_st tl;
+
+                    printf("  -- M20 SPR write-path check (--sprw) --\n");
+                    memset(&tx, 0, sizeof(tx));
+                    tl.tx = &tx;
+                    tl.num_tx = 1;
+                    tx.addr.mem_space_id = 0;
+                    tx.num_bytes = 4;
+
+                    /* 1. original content via the bus alias */
+                    tx.access_type = MCD_TX_AT_R;
+                    tx.addr.address = 0x70000000ull;
+                    tx.data = (uint8_t *)&orig;
+                    tl.num_tx_ok = 0;
+                    r = f_txlist(core, &tl);
+                    CHK(r == MCD_RET_ACT_NONE && tl.num_tx_ok == 1,
+                        "read original DSPR[0] content (bus)");
+
+                    /* 2. write pattern via the LOCAL address */
+                    tx.access_type = MCD_TX_AT_W;
+                    tx.addr.address = 0xD0000000ull;
+                    tx.data = (uint8_t *)&pat;
+                    tl.num_tx_ok = 0;
+                    r = f_txlist(core, &tl);
+                    CHK(r == MCD_RET_ACT_NONE && tl.num_tx_ok == 1,
+                        "write pattern via local DSPR address");
+
+                    /* 3. pattern must be visible through the bus alias */
+                    tx.access_type = MCD_TX_AT_R;
+                    tx.addr.address = 0x70000000ull;
+                    tx.data = (uint8_t *)&v1;
+                    tl.num_tx_ok = 0;
+                    r = f_txlist(core, &tl);
+                    CHK(r == MCD_RET_ACT_NONE && tl.num_tx_ok == 1 && v1 == pat,
+                        "pattern visible through the bus alias");
+
+                    /* 4. restore the original content via the bus */
+                    tx.access_type = MCD_TX_AT_W;
+                    tx.addr.address = 0x70000000ull;
+                    tx.data = (uint8_t *)&orig;
+                    tl.num_tx_ok = 0;
+                    r = f_txlist(core, &tl);
+                    CHK(r == MCD_RET_ACT_NONE && tl.num_tx_ok == 1,
+                        "restore original content (bus)");
+
+                    /* 5. restore verified through both views */
+                    tx.access_type = MCD_TX_AT_R;
+                    tx.addr.address = 0x70000000ull;
+                    tx.data = (uint8_t *)&v2;
+                    tl.num_tx_ok = 0;
+                    r = f_txlist(core, &tl);
+                    ok_bus = (r == MCD_RET_ACT_NONE && tl.num_tx_ok == 1);
+                    tx.addr.address = 0xD0000000ull;
+                    tx.data = (uint8_t *)&v3;
+                    tl.num_tx_ok = 0;
+                    r = f_txlist(core, &tl);
+                    ok_loc = (r == MCD_RET_ACT_NONE && tl.num_tx_ok == 1);
+                    printf("       orig 0x%08X | pattern readback 0x%08X | "
+                           "restored bus 0x%08X local 0x%08X\n",
+                           (unsigned)orig, (unsigned)v1,
+                           (unsigned)v2, (unsigned)v3);
+                    CHK(ok_bus && ok_loc && v2 == orig && v3 == orig,
+                        "DSPR cell restored (bus and local view)");
                 }
 
                 /* state query */

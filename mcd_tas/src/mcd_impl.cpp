@@ -2160,6 +2160,51 @@ mcd_return_et mcd_qry_trig_set_state_f(const mcd_core_st *core,
     return r;
 }
 
+/* ------------------------------------------------------------------ */
+/* M20: core-local scratchpad window translation.
+ *
+ * The reference implementation (via the DAS server) resolves the
+ * core-local scratchpad windows for the addressed core.  TAS only
+ * knows the global bus view, so a raw local address fails with a PL0
+ * bus error (verified in M12: 0xD0000000/0xC0000000 -> PL0 0x8D).
+ * Map the local windows onto the addressed core's bus alias:
+ * TC27x UM Table 5-10 gives PSPR_base/DSPR_base per Core-ID
+ * (0: 0x70100000/0x70000000, 1: 0x60100000/0x60000000,
+ * 2: 0x50100000/0x50000000) and the local addresses are always
+ * 0xC0000000 (PSPR) and 0xD0000000 (DSPR).  The windows are rounded
+ * up to the next power of two (128 KiB / 32 KiB) so that the
+ * cache/tag memories, which are mapped contiguously after the
+ * scratchpads (same translation), stay covered; reads beyond the
+ * implemented memories fail on both sides. */
+#define MCD_TAS_DSPR_LOCAL_BASE 0xD0000000ull
+#define MCD_TAS_DSPR_LOCAL_SIZE 0x20000ull      /* 112 KiB DSPR + cache */
+#define MCD_TAS_DSPR_BUS_BASE   0x70000000ull   /* CPU0 bus alias       */
+#define MCD_TAS_PSPR_LOCAL_BASE 0xC0000000ull
+#define MCD_TAS_PSPR_LOCAL_SIZE 0x8000ull       /* 24 KiB PSPR + cache  */
+#define MCD_TAS_PSPR_BUS_BASE   0x70100000ull   /* CPU0 bus alias       */
+#define MCD_TAS_CORE_BUS_STRIDE 0x10000000ull   /* per-core decrement   */
+
+static uint64_t spr_translate(int core_index, uint64_t addr)
+{
+    uint64_t off;
+
+    if (core_index < 0)
+        return addr;
+    if (addr >= MCD_TAS_DSPR_LOCAL_BASE &&
+        addr <  MCD_TAS_DSPR_LOCAL_BASE + MCD_TAS_DSPR_LOCAL_SIZE) {
+        off = addr - MCD_TAS_DSPR_LOCAL_BASE;
+        return MCD_TAS_DSPR_BUS_BASE
+               - (uint64_t)core_index * MCD_TAS_CORE_BUS_STRIDE + off;
+    }
+    if (addr >= MCD_TAS_PSPR_LOCAL_BASE &&
+        addr <  MCD_TAS_PSPR_LOCAL_BASE + MCD_TAS_PSPR_LOCAL_SIZE) {
+        off = addr - MCD_TAS_PSPR_LOCAL_BASE;
+        return MCD_TAS_PSPR_BUS_BASE
+               - (uint64_t)core_index * MCD_TAS_CORE_BUS_STRIDE + off;
+    }
+    return addr;
+}
+
 mcd_return_et mcd_execute_txlist_f(const mcd_core_st *core,
                                    mcd_txlist_st *txlist)
 {
@@ -2262,6 +2307,16 @@ mcd_return_et mcd_execute_txlist_f(const mcd_core_st *core,
                         "mcd_execute_txlist_f: tx[%u] unknown memory space %u",
                         i, (unsigned)tx->addr.mem_space_id);
             goto fail;
+        }
+        /* M20: resolve core-local scratchpad addresses for this core */
+        {
+            uint64_t ta = spr_translate(cs->core_index, a);
+            if (ta != a) {
+                dbg("mcd_tas: tx[%u] local SPR 0x%llX -> bus 0x%llX "
+                    "(core %d)", i, (unsigned long long)a,
+                    (unsigned long long)ta, cs->core_index);
+                a = ta;
+            }
         }
         if (nb == 0)
             continue;
