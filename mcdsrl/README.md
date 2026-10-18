@@ -46,6 +46,12 @@ in addr_map 1 failed"):
 `mcds_recorder_das.dll`(TC27xED 미지원). → 어댑터/서버 측 MCDS 지원 문제로 판정.
 MCDS 레지스터가 열리면 우리 recorder는 원본과 동일 프로토콜로 즉시 동작(프레임 대조 완료).
 
+**매뉴얼 근거** (TC27x D-Step UM §1.4/§1.5 — OCDS/ED 챕터): "**Product chip address space is
+represented with DAS address map 0, EEC with 1**" (map 1 = EEC 확증!) · "Generic serial DAP/JTAG
+based link to access the complete address space" (EEC 접근 = 표준 DAP 경로!) · "miniWiggler supports
+DAP, JTAG, SWD and SPD" · miniMCDS = TC29x 전용, TC27x = ED의 풀 MCDS(정합!) · ED QFP는 TDI핀=
+VDDPSB로 **JTAG 불가** — 표준 툴 인터페이스는 DAP.
+
 ## 원본 교차 검증 (스모크 양쪽 실행)
 
 ```
