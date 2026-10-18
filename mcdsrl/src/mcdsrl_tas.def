@@ -1,0 +1,24 @@
+LIBRARY mcdsrl_tas
+EXPORTS
+    mcdsrl_lib_init
+    mcdsrl_lib_version
+    mcdsrl_get_error
+    mcdsrl_qry_devices
+    mcdsrl_connect_device
+    mcdsrl_device_connected
+    mcdsrl_disconnect_device
+    mcdsrl_reset_device
+    mcdsrl_read
+    mcdsrl_write
+    mcdsrl_read_list
+    mcdsrl_write_list
+    mcdsrl_read_block
+    mcdsrl_write_block
+    mcdsrl_read_timestamped
+    mcdsrl_set_mcdsconfig
+    mcdsrl_set_trace_buf
+    mcdsrl_open_trace_file
+    mcdsrl_start_recording
+    mcdsrl_get_recstate
+    mcdsrl_get_data_from_fifo
+    mcdsrl_stop_recording
