@@ -29,10 +29,11 @@ TasServer(24817) 백엔드로** 구동하는 프로토타입 DLL(`mcd_tas.dll`)�
 | M16 | run/stop 실구현 — DBGSR 쓰기(run=0x4/stop=0x6)·내부 상태 모델·1회성 STOPPED 이벤트 + trig_set 성공 no-op | **완료·검증(§3-P)** — smoke 라이브(DBGSR 독립 재판독) + 원본 클라이언트 GUI Run/Stop 전 구간 |
 | M17 | reset 실구현 — DEVICE_CONNECT 재전송(0x0003 → 필요시 run 해제)·DBGSR 재판독 검증(M17b: DE 비트 수정) | **완료·검증(§3-Q)** — 리셋 벡터(0xA0000020)·GUI Reset/Reset-and-Halt/Stop 전 구간 |
 | M18 | 트리거(브레이크포인트) 실구현 — OCDS TR0..TR7 직접 프로그래밍(PC/데이터·단일/범위·halt) | **완료·검증(§3-R)** — PC 일치 정지(EVTSRC=TR0EVT)·GUI IP Trigger 전 라이프사이클 |
+| M19 | trace·잔여 함수 원본 교차 캘리브레이션 — 원본 DLL 직접 프로브(신규) | **완료·검증(§3-S)** — 12/12 라인 완전 일치(trace 무음 오류·core_modes 2종·max_payload 16384·trig_info) |
 
 ## 1. 구현 범위
 
-54개 함수 중 **실동작 33개 + 정직 고정응답 10개 + 스텁 11개**(미구현은 `MCD_ERR_FN_UNIMPLEMENTED` + 함수명 메시지, `mcd_qry_error_info_f`로 조회) — M18 기준. 스텁 11개 중 CHL 5종+`qry_input_handle`은 **원본 mcdxdas도 동일 스텁**(공용 스텁 `0x180001D30`)으로 파리티.
+54개 함수 중 **실동작 34개 + 참조 파리티 오류 8개 + 고정 성공 3개 + 스텁 9개**(미구현은 `MCD_ERR_FN_UNIMPLEMENTED` + 함수명 메시지, `mcd_qry_error_info_f`로 조회) — M19 기준. 스텁 9개 중 CHL 5종+`qry_input_handle`은 **원본도 스텁/미export**라 파리티.
 
 - **M1 (11)**: `mcd_initialize_f` `mcd_exit_f` `mcd_qry_servers_f` `mcd_open_server_f` `mcd_close_server_f`
   `mcd_set_server_config_f` `mcd_qry_server_config_f` `mcd_qry_systems_f` `mcd_qry_devices_f`
@@ -45,6 +46,8 @@ TasServer(24817) 백엔드로** 구동하는 프로토타입 DLL(`mcd_tas.dll`)�
 - **M17 (1)**: `mcd_rst_f` 실구현 — DC 0x0003(+필요시 run 해제) 재전송, DE=1 유지, DBGSR 재판독 검증(§3-Q)
 - **M18 (4+4)**: `mcd_create_trig_f` `mcd_qry_trig_f` `mcd_remove_trig_f` `mcd_qry_trig_state_f` 실구현
   (OCDS TR0..TR7) + `qry_trig_info`·`qry_trig_set`·`qry_trig_set_state`·`remove_trig_set` 실데이터(§3-R)
+- **M19 (교차 캘리브레이션)**: trace 4종 무음 오류 파리티 · `qry_core_modes` 2종 · `qry_max_payload_size` 16384 ·
+  `qry_reg_compound`/`qry_current_time`/`qry_device_description` 0x100 · `qry_trig_info` 실측값(§3-S)
 
 ### 1.1 M2 동작 요약
 
@@ -334,6 +337,20 @@ trig_set_state 덤프)으로 원본 `mcdxdas.dll`의 레지스터 DB를 전량 �
   → [m18_dropin/](../m18_dropin/) (화면 3종·로그 발췌·smoke)
 - 부수: run 검증에서 트리거 히트 구분(브레이크포인트 레이스 오탐 방지)
 
+### S. M19 — trace·잔여 함수 원본 교차 캘리브레이션 (2026-10-18)
+
+- **프로브 신규 확립**: smoke `--trace` 모드로 **원본 `mcdxdas.dll`(1.14.12)을 직접 로드**해 실측 —
+  원본 로드 조건(실측): 빈 `system_key`(NULL이면 원본 크래시)·개행+따옴표 config·실버퍼
+  (NULL 버퍼/코어 핸들에서 원본은 미방어 크래시 — 우리 DLL은 전부 오류 반환, 차이로 기록)
+- **③ execute_command**: 원본 exports(55)에 **없음** — 미export 3종(`execute_command`·`set_global`·
+  `qry_input_handle`; 원본은 대신 `mcd_das_*` 4개 export). 우리는 54개 전부 export(API-정합)
+- **④ trace 4종**: 원본은 전부 **무음 HANDLE_ERROR**(rc 3·오류정보 없음·출력 미변경) → `err_silent` 파리티
+- **부수 캘리브레이션**: `qry_core_modes` = **`1 'Supervisor'`·`2 'User'`**(실데이터 구현) ·
+  `qry_reg_compound`/`qry_current_time`/`qry_device_description` = rc 3+0x100 ·
+  `qry_max_payload_size` = **16384** · `qry_trig_info` = **0xF/0x3/0x1/num 8/swbp 1**
+- **검증**: 원본 vs 우리 프로브 **12/12 라인 완전 일치** · smoke `--runstop`·`--rst`·`--trig` 회귀 ok ·
+  GUI Run/Stop sanity — → [m19_dropin/](../m19_dropin/) (프로브 2종·GUI 화면·로그 발췌)
+
 ## 4. 구현 메모 (정본 근거)
 
 - **프레임 빌더** (`tas_pkt_handler_rw.cpp` 규칙, §8 실측과 일치):
@@ -380,6 +397,8 @@ trig_set_state 덤프)으로 원본 `mcdxdas.dll`의 레지스터 DB를 전량 �
 - **M18(완료, 2026-10-18)**: 트리거 실구현(§3-R) — OCDS TR0..TR7·PC/데이터·범위·halt, GUI 전 라이프사이클.
   **미구현 유지**: `step`·`run_until`(DAP 필요)·`execute_command`·`set_trace_state`·`read_trace`
   (CHL 5종+`qry_input_handle`은 원본도 스텁 — 파리티).
+- **M19(완료, 2026-10-18)**: trace·잔여 함수 원본 교차 캘리브레이션(§3-S) — 원본 DLL 직접 프로브 12/12 일치.
+  잔여 차이(기록): 서버명 표기(`TasServer` vs `UDAS`)·미export 3종(우리는 API-정합 export)·NULL 인자 방어(우리만).
 - **다음**: 새 요구사항에 한함.
 
 ## 부록. 산출물

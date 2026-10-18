@@ -1,0 +1,109 @@
+== mcd_tas smoke test ==
+dll: .\mcd_tas.dll
+cfg: (default)
+mode: with core attach (--attach) + trace probe (--trace)
+
+all exports resolved
+
+  [ok]   mcd_initialize_f
+       impl: api 1.1 'SPRINT Release', vendor 'mcd_tas prototype', build 0.2.0, date Oct 18 2026
+mcd_tas: initialized (client requested 1.1 'SPRINT Release')
+  [ok]   mcd_qry_servers_f (count)
+       running servers on localhost: 1
+mcd_tas: qry_servers(localhost): 1 server 'TasServer' acc_hw 'DAS JTAG AURDUINO 46YPEADW'
+  [ok]   mcd_qry_servers_f (fetch)
+       server[0]: 'TasServer' acc_hw 'DAS JTAG AURDUINO 46YPEADW' system_instance ''
+mcd_tas: server 'TasServer' opened at localhost:24817 (1 targets)
+  [ok]   mcd_open_server_f
+  [ok]   mcd_qry_systems_f
+       system 'Real HW' instance '' host :0
+  [ok]   mcd_qry_devices_f
+       device[0]: acc_hw 'DAS JTAG AURDUINO 46YPEADW' device 'TC27x' type 0x401DA083 id 0x00000000
+  [ok]   mcd_qry_cores_f
+       core[0]: 'Core 0: CPU0 TriCore 1.6E' core_type 44 core_id 0x00B7C002 (acc_hw 'DAS JTAG AURDUINO 46YPEADW')
+       core[1]: 'Core 1: CPU1 TriCore 1.6P' core_type 44 core_id 0x00C0C012 (acc_hw 'DAS JTAG AURDUINO 46YPEADW')
+       core[2]: 'Core 2: CPU2 TriCore 1.6P' core_type 44 core_id 0x00C0C012 (acc_hw 'DAS JTAG AURDUINO 46YPEADW')
+  NOTE: --attach performs TAS DEVICE_CONNECT (JTAG hot attach, no reset/halt)
+mcd_tas: open_core request: acc_hw='DAS JTAG AURDUINO 46YPEADW' core='Core 0: CPU0 TriCore 1.6E' host='localhost' port=24817
+[rw] rq cnt 65473 frame_items 1: 01 B0 FF 00 C1 FF 00 80 00 11 0F 00 01 2C 00 D0 1A 00 00 00 00 B1 01 00
+[rw] rsp 116 bytes: 00 B0 89 08 1A 2C 1A 80 83 A0 1D 40 00 00 00 00 54 72 69 43 6F 72 65 2D 46 61 6D 69 6C 79 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 B1 C1 FF
+[rw] rq cnt 65474 frame_items 1: 01 B0 FF 00 C2 FF 00 80 00 11 0F 00 01 2C 00 00 18 00 00 00 00 B1 01 00
+[rw] rsp 108 bytes: 00 B0 89 08 18 2C 18 80 55 44 41 53 20 4A 44 53 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 49 6E 66 69 6E 65 6F 6E 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 01 01 00 00 00 00 00 00 41 70 72 20 33 30 20 32 30 32 36 00 00 00 00 00 00 00 00 00 00 00 00 00 00 B1 C2 FF
+[rw] rq cnt 65475 frame_items 1: 01 B0 FF 00 C3 FF 00 80 00 11 0F 00 01 2C 00 80 2A 00 00 00 00 B1 01 00
+[rw] rsp 180 bytes: 00 B0 89 08 2A 2C 2A 80 44 41 53 20 4A 54 41 47 20 41 55 52 44 55 49 4E 4F 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 49 6E 66 69 6E 65 6F 6E 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 34 36 59 50 45 41 44 57 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 01 00 00 80 01 00 00 80 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 B1 C3 FF
+mcd_tas: session attached to 'DAS JTAG AURDUINO 46YPEADW' (device 0x401DA083, feat 0x0000, max_rw 32)
+mcd_tas: core 0 of 'DAS JTAG AURDUINO 46YPEADW' opened (device 'TC27x' type 0x401DA083)
+mcd_tas: CALL qry_mem_spaces start=0
+  [ok]   mcd_open_core_f (session + attach)
+  [ok]   mcd_qry_mem_spaces_f
+       mem space id 0 'Code and Data' type 0x0 range 0x0..0xFFFFFFFF opts 0x200
+  [ok]   mcd_qry_mem_blocks_f returns HANDLE_ERROR (reference: unimplemented)
+       mem blocks rc 3: code 0x00000100 'Function is not implemented'
+  [ok]   mcd_qry_rst_classes_f
+mcd_tas: CALL qry_mem_blocks space=0 start=0 (reference: unimplemented)
+mcd_tas: FAIL: Function is not implemented
+mcd_tas: CALL qry_error_info ('Function is not implemented')
+       rst class vector 0x00000007
+       rst_info[0]: class_vector 0x00000001 'Power-On Reset (with PORST pin)'
+       rst_info[1]: class_vector 0x00000002 'System Reset'
+       rst_info[2]: class_vector 0x00000004 'Application Reset'
+       after attach: device 'TC27x' type 0x401DA083 id 0x00000000
+mcd_tas: tx[0] R space=1 addr=0xF0000480 bytes=4 width=4
+mcd_tas: tx[1] R space=1 addr=0xF0000480 bytes=16 width=0
+[rw] rq cnt 65476 frame_items 3: 01 B0 FF 00 C4 FF 01 00 00 15 00 F0 00 25 80 04 00 27 80 04 00 27 88 04 00 B1 03 00
+[rw] rsp 40 bytes: 00 B0 89 08 01 25 01 80 01 00 08 00 02 27 02 80 01 00 08 00 00 00 00 00 02 27 02 80 88 04 00 F0 68 F0 10 00 00 B1 C4 FF
+  [ok]   mcd_execute_txlist_f (2 read transactions)
+       rd32  @0xF0000480 -> 01 00 08 00
+       rd16B @0xF0000480 -> 01 00 08 00 00 00 00 00 88 04 00 F0 68 F0 10 00
+[rw] rq cnt 65477 frame_items 1: 01 B0 FF 00 C5 FF 01 00 00 15 81 F8 00 25 00 FD 00 B1 01 00
+[rw] rsp 16 bytes: 00 B0 89 08 01 25 01 80 03 10 00 00 00 B1 C5 FF
+mcd_tas: qry_state: DBGSR @0xF881FD00 = 0x00001003 (DE=1 HALT[2:1]=1 SIH=0 SUSP=0 PEVT=0 EVTSRC=16) -> DEBUG (cached for session)
+mcd_tas: CALL qry_state -> DEBUG (dbgsr 0x00001003)
+  [ok]   mcd_qry_state_f
+       state 0x3 (other) info ''
+mcd_tas: CALL qry_traces (reference parity: silent HANDLE_ERROR)
+mcd_tas: CALL qry_error_info ('')
+       [trace] qry_traces rc 3 num 4 code 0x00000000 ''
+mcd_tas: CALL qry_trace_state (reference parity: silent HANDLE_ERROR)
+mcd_tas: CALL qry_error_info ('')
+       [trace] qry_trace_state(id 0x1234) rc 3 code 0x00000000 ''
+mcd_tas: CALL set_trace_state (reference parity: silent HANDLE_ERROR)
+mcd_tas: CALL qry_error_info ('')
+       [trace] set_trace_state(id 0x1234, zero state) rc 3 code 0x00000000 ''
+mcd_tas: CALL read_trace (reference parity: silent HANDLE_ERROR)
+mcd_tas: CALL qry_error_info ('')
+mcd_tas: CALL qry_core_modes start=0
+mcd_tas: CALL qry_error_info ('')
+       [trace] read_trace(id 0x1234) rc 3 frames 1 code 0x00000000 ''
+       [misc] qry_core_modes rc 0 num 2 code 0x00000000 ''
+       [misc]   mode[0] id 1 name 'Supervisor'
+       [misc]   mode[1] id 2 name 'User'
+mcd_tas: CALL qry_active_overlays start=0
+mcd_tas: CALL qry_error_info ('')
+       [misc] qry_active_overlays rc 0 num 0 code 0x00000000 ''
+       [misc] qry_ctrigs rc 0 num 0 code 0x00000000 ''
+mcd_tas: CALL qry_error_info ('')
+       [misc] qry_reg_compound rc 3 num 4 code 0x00000100 'Function is not implemented'
+mcd_tas: CALL qry_reg_compound (reference: unimplemented)
+mcd_tas: FAIL: Function is not implemented
+mcd_tas: CALL qry_error_info ('Function is not implemented')
+mcd_tas: CALL qry_current_time (reference: unimplemented)
+mcd_tas: FAIL: Function is not implemented
+mcd_tas: CALL qry_error_info ('Function is not implemented')
+       [misc] qry_current_time rc 3 time 0 code 0x00000100 'Function is not implemented'
+mcd_tas: CALL qry_device_description
+mcd_tas: FAIL: Function is not implemented
+mcd_tas: CALL qry_error_info ('Function is not implemented')
+       [misc] qry_device_description(NULL) rc 3 len 0 code 0x00000100 'Function is not implemented'
+mcd_tas: CALL qry_max_payload_size (-> 16384, reference parity)
+mcd_tas: CALL qry_error_info ('')
+       [misc] qry_max_payload_size rc 0 max 16384 code 0x00000000 ''
+       [misc] qry_trig_info rc 0 type 0xf opt 0x3 act 0x1 num 8 state 0 cnt 0 swbp 1 code 0x00000000 ''
+mcd_tas: CALL qry_trig_info
+mcd_tas: CALL qry_error_info ('')
+mcd_tas: core 0 of 'DAS JTAG AURDUINO 46YPEADW' closed
+  [ok]   mcd_close_core_f
+mcd_tas: server closed
+  [ok]   mcd_close_server_f
+
+== SMOKE OK (0 failure(s)) ==
