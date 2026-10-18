@@ -4,12 +4,12 @@ MCD(Multi-Core Debug) API v1.1 **"SPRINT Release"** 구현 DLL 프로토타입.
 백엔드는 [TAS](https://github.com/najari/tas-sw) 서버(TCP 24817) — 즉, `mcdxdas.dll`(DAS 백엔드)의
 자매품으로 "MCD API를 TAS로" 제공하는 실험 구현입니다.
 
-- 상태: **M16 완료 (2026-10-18)** — M12까지 원본 `mcd_basic_client.exe`에 drop-in(`mcdxdas.dll` 자리)으로
+- 상태: **M17 완료 (2026-10-18)** — M12까지 원본 `mcd_basic_client.exe`에 drop-in(`mcdxdas.dll` 자리)으로
   **GUI 전 구간 검증 + 교차 캘리브레이션 완료**(열거·열기 M1~M3, State/IP·DBGSR M4~M5, 오류 표시 M6,
   reg_map M7, mem_spaces/스텁 M8, 열거 교차 M9, 리셋 클래스 M10, Run 실관찰 M11, GUI Write M12)에 이어
-  **M16: run/stop 실구현·라이브 검증**(DBGSR 쓰기 경로, 상태 복원 확인 — 아래 M16 섹션).
+  **M16: run/stop** · **M17: reset** 실구현·라이브 검증(아래 M16/M17 섹션).
   (M2 애태치: 초기 DEVICE_CONNECT 실패는 USB 허브 경유 문제 — 본체 직결로 해결)
-- 원칙: **읽기 전용 기본** — run/stop은 M16에서 구현(사용 승인 하 상태 변경), Step/Reset/트리거/CHL은 미구현(스텁)
+- 원칙: **읽기 전용 기본** — run/stop/reset은 M16/M17에서 구현(사용 승인 하 상태 변경), Step/트리거 생성/CHL은 미구현(스텁)
 - 소스 언어: C++ (SPRINT `mcd_api.h` 헤더가 `extern "C"` 비가드 선언이라 C에서는 컴파일 불가)
 
 ## 구성
@@ -61,11 +61,11 @@ build\Release\tas_probe.exe [host] [port]
 `mcd_open_core_f` `mcd_close_core_f` `mcd_qry_mem_spaces_f` `mcd_execute_txlist_f`
 `mcd_qry_state_f` `mcd_qry_max_payload_size_f`
 
-나머지 16개는 `MCD_RET_ACT_HANDLE_ERROR` + `MCD_ERR_FN_UNIMPLEMENTED` + 함수명 메시지를 반환합니다
+나머지 15개는 `MCD_RET_ACT_HANDLE_ERROR` + `MCD_ERR_FN_UNIMPLEMENTED` + 함수명 메시지를 반환합니다
 (`mcd_qry_error_info_f`로 조회 가능): 트리거 4종(create/qry/remove/qry_state),
-`run_until`·`step`·`rst`·`execute_command`, CHL 5종(open/send/receive/reset/close),
-`set_trace_state`·`read_trace`·`qry_input_handle`. (run/stop은 **M16에서 실구현** —
-`remove/activate_trig_set`은 M16b에서 성공 no-op — 아래 M16 섹션)
+`run_until`·`step`·`execute_command`, CHL 5종(open/send/receive/reset/close),
+`set_trace_state`·`read_trace`·`qry_input_handle`. (run/stop은 **M16**, reset은 **M17**에서 실구현 —
+`remove/activate_trig_set`은 M16b에서 성공 no-op — 아래 M16/M17 섹션)
 
 ## M16 구현 — run/stop (2026-10-18)
 
@@ -87,9 +87,27 @@ build\Release\tas_probe.exe [host] [port]
   - 관찰: 상태 전환 직후 첫 폴링에서 **1회성 읽기 실패**(PL0 0x8D→0x98)가 표시될 수 있음 —
     M6에서 원본과 함께 캘리브레이션한 것과 동일한 표시·자동 복구
 - 참고: EVTSRC 차이(원본 stop=TR0EVT `0x10xx` vs DBGSR 쓰기=EXEVT `0x000x`) — 상태 판정과 무관
-- 미구현 유지: `mcd_rst_f`(DEVICE_CONNECT 옵션 기반 리셋 — 미드세션 메커니즘 캘리브레이션 필요),
-  `mcd_step_f`, `mcd_run_until_f`
+- 미구현 유지: `mcd_rst_f`는 **M17에서 실구현**(아래 M17 섹션), `mcd_step_f`, `mcd_run_until_f`
 - 배포: `drop_in\mcdxdas.dll` = SHA256 `9EA500C63676454B…` (M16b 기준, 전문은 파일 참조)
+
+## M17 구현 — reset (2026-10-18)
+
+- `mcd_rst_f(core, rst_class_vector, rst_and_halt)` 실구현: **활성 세션에서 TAS DEVICE_CONNECT 재전송**
+  - 항상 option `0x0003`(RESET_AND_HALT) 사용 → `TRUE`면 그대로(정지) · `FALSE`면 DBGSR run 쓰기(0x4)로 해제(부팅·실행)
+  - **(M17b) 이유**: `0x0001`(RESET)은 리셋 후 **DBGSR.DE=0**(디버그 비활성)을 남겨, 이후 stop(halt 쓰기 0x6)이
+    하드웨어에서 무시됨(버스 ACK만) — `0x0003` 경로는 **DE=1 유지** → stop 정상.
+    run/stop/rst 모두 **실제 DBGSR 재판독 검증**을 추가해 무음 상태 불일치를 차단
+  - 공식 client API와 동일 계열(`CTasClientServerCon::mDeviceConnect(dco)`, `tas_clnt_dco_et`);
+    서버 `feat_used`로 적용 확인(요청 비트 검사 — UNLOCK 비트 허용)
+  - 리셋 클래스 선택은 TAS 백엔드 미지원 — 광고 벡터(0x7) 내 임의 값 → 동일 리셋(문서화)
+  - 상태 모델: rst_and_halt→DEBUG(+1회성 STOPPED) · reset→RUNNING; 같은 디바이스의 다른 슬롯은 무효화(재판독)
+- 라이브 검증(smoke `--attach --rst`): 리셋 전 PC=0x8003A330 → **리셋 후 PC=0xA0000020(리셋 벡터)·
+  DBGSR=0x00001013(HALT=01b)** — 2012 MCD 데모 로그의 `rsthlt` 결과(0xA0000020)와 동일 ·
+  **reset-and-run → DE=1 → stop → HALT=01b** (M17b 경로) · 실패 0 (증거: `smoke_rst_run.txt`)
+- **GUI 검증**(원본 클라이언트): "Reset and Halt" → `mcd_rst_f(class 0x1, TRUE)` → DC 0x0003 → Debug(PC 0xA0000020) ·
+  "Reset" → DC 0x0003+run → Running(DE=1) → **"Stop" → Debug·IP 고정(M17b 수정 확인)** · 최종 Debug
+  (화면: `gui_test\m17*.png` · 로그: `drop_in\client_stderr35/36.log`)
+- 배포: `drop_in\mcdxdas.dll` = SHA256 `29A1573B735F71A8…` (M17b)
 
 ### 세션 / 애태치 (`mcd_open_core_f`)
 

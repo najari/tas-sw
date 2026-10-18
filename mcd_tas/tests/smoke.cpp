@@ -26,6 +26,7 @@ typedef mcd_return_et (*pfn_qry_cores)(const mcd_core_con_info_st *, uint32_t, u
 typedef void           (*pfn_qry_error)(const mcd_core_st *, mcd_error_info_st *);
 typedef mcd_return_et (*pfn_run)(const mcd_core_st *, mcd_bool_t);
 typedef mcd_return_et (*pfn_stop)(const mcd_core_st *, mcd_bool_t);
+typedef mcd_return_et (*pfn_rst)(const mcd_core_st *, uint32_t, mcd_bool_t);
 typedef mcd_return_et (*pfn_open_core)(const mcd_core_con_info_st *, mcd_core_st **);
 typedef mcd_return_et (*pfn_close_core)(const mcd_core_st *);
 typedef mcd_return_et (*pfn_qry_mem_spaces)(const mcd_core_st *, uint32_t, uint32_t *, mcd_memspace_st *);
@@ -45,6 +46,34 @@ static int g_fails = 0;
     type var = (type)GetProcAddress(h, name); \
     if (var == NULL) { printf("missing export: %s\n", name); return 3; }
 
+/* Read one 32-bit word through the read-only txlist path (used by the
+ * --runstop / --rst state-change tests).  Returns 0 on success. */
+static int read_word32(pfn_execute_txlist f_txlist, const mcd_core_st *core,
+                       uint64_t addr, uint32_t *out)
+{
+    mcd_tx_st tx;
+    uint8_t b[4];
+    mcd_txlist_st tl;
+
+    memset(&tx, 0, sizeof(tx));
+    memset(b, 0, sizeof(b));
+    tx.addr.mem_space_id = 1;
+    tx.addr.address = addr;
+    tx.access_type = MCD_TX_AT_R;
+    tx.access_width = 4;
+    tx.num_bytes = 4;
+    tx.data = b;
+    tl.tx = &tx;
+    tl.num_tx = 1;
+    tl.num_tx_ok = 0;
+    *out = 0;
+    if (f_txlist(core, &tl) != MCD_RET_ACT_NONE || tl.num_tx_ok != 1)
+        return -1;
+    *out = (uint32_t)b[0] | ((uint32_t)b[1] << 8) |
+           ((uint32_t)b[2] << 16) | ((uint32_t)b[3] << 24);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     HMODULE h;
@@ -52,6 +81,7 @@ int main(int argc, char **argv)
     const char *cfg  = (argc > 2 && argv[2][0] && argv[2][0] != '-') ? argv[2] : NULL;
     int attach = 0;
     int runstop = 0;
+    int rst = 0;
     mcd_return_et r;
     uint32_t n;
     uint32_t i;
@@ -61,12 +91,15 @@ int main(int argc, char **argv)
             attach = 1;
         if (strcmp(argv[i], "--runstop") == 0)
             runstop = 1;
+        if (strcmp(argv[i], "--rst") == 0)
+            rst = 1;
     }
 
     printf("== mcd_tas smoke test ==\n");
-    printf("dll: %s\ncfg: %s\nmode: %s%s\n\n", dll, cfg ? cfg : "(default)",
+    printf("dll: %s\ncfg: %s\nmode: %s%s%s\n\n", dll, cfg ? cfg : "(default)",
            attach ? "with core attach (--attach)" : "read-only",
-           runstop ? " + run/stop (--runstop)" : "");
+           runstop ? " + run/stop (--runstop)" : "",
+           rst ? " + reset (--rst)" : "");
 
     h = LoadLibraryA(dll);
     if (h == NULL) {
@@ -85,6 +118,7 @@ int main(int argc, char **argv)
     LOADFN(h, pfn_qry_error,    f_err,     "mcd_qry_error_info_f");
     LOADFN(h, pfn_run,          f_run,     "mcd_run_f");
     LOADFN(h, pfn_stop,         f_stop,    "mcd_stop_f");
+    LOADFN(h, pfn_rst,          f_rst,     "mcd_rst_f");
     LOADFN(h, pfn_open_core,    f_opencore,   "mcd_open_core_f");
     LOADFN(h, pfn_close_core,   f_closecore,  "mcd_close_core_f");
     LOADFN(h, pfn_qry_mem_spaces, f_memspaces, "mcd_qry_mem_spaces_f");
@@ -325,33 +359,8 @@ int main(int argc, char **argv)
                  * again (the state found at attach). */
                 if (runstop) {
                     mcd_core_state_st st2;
-                    mcd_tx_st pctx;
-                    uint8_t  pcb[4];
-                    mcd_txlist_st ptl;
                     uint32_t pc0 = 0, pc1 = 0;
                     uint32_t state_before = MCD_CORE_STATE_UNKNOWN;
-
-                    /* helper read: DBGSR + PC through the read-only path
-                     * (independent evidence of the DBGSR write effect) */
-                    #define READ_WORD(addr_, out_)                                   \
-                        do {                                                      \
-                            memset(&pctx, 0, sizeof(pctx));                       \
-                            memset(pcb, 0, sizeof(pcb));                          \
-                            pctx.addr.mem_space_id = 1;                           \
-                            pctx.addr.address = (addr_);                          \
-                            pctx.access_type = MCD_TX_AT_R;                       \
-                            pctx.access_width = 4;                                \
-                            pctx.num_bytes = 4;                                   \
-                            pctx.data = pcb;                                      \
-                            ptl.tx = &pctx; ptl.num_tx = 1; ptl.num_tx_ok = 0;    \
-                            (out_) = 0;                                           \
-                            if (f_txlist(core, &ptl) == MCD_RET_ACT_NONE &&       \
-                                ptl.num_tx_ok == 1)                               \
-                                (out_) = (uint32_t)pcb[0] |                       \
-                                         ((uint32_t)pcb[1] << 8) |                \
-                                         ((uint32_t)pcb[2] << 16) |               \
-                                         ((uint32_t)pcb[3] << 24);                \
-                        } while (0)
 
                     memset(&st2, 0, sizeof(st2));
                     r = f_state(core, &st2);
@@ -362,7 +371,7 @@ int main(int argc, char **argv)
                     r = f_run(core, FALSE);
                     CHK(r == MCD_RET_ACT_NONE, "mcd_run_f (run)");
                     Sleep(300);
-                    READ_WORD(0xF881FD00ull, pc0);
+                    read_word32(f_txlist, core, 0xF881FD00ull, &pc0);
                     printf("       [runstop] running: DBGSR=0x%08X\n",
                            (unsigned)pc0);
                     CHK((pc0 & 0x6u) == 0x0u, "DBGSR HALT=00b while running");
@@ -375,7 +384,7 @@ int main(int argc, char **argv)
 
                     r = f_stop(core, FALSE);
                     CHK(r == MCD_RET_ACT_NONE, "mcd_stop_f (stop)");
-                    READ_WORD(0xF881FD00ull, pc1);
+                    read_word32(f_txlist, core, 0xF881FD00ull, &pc1);
                     printf("       [runstop] stopped: DBGSR=0x%08X\n",
                            (unsigned)pc1);
                     CHK((pc1 & 0x6u) == 0x2u, "DBGSR HALT=01b while halted");
@@ -405,8 +414,71 @@ int main(int argc, char **argv)
                     } else {
                         printf("       [runstop] restored: DEBUG (as found)\n");
                     }
+                }
 
-                    #undef READ_WORD
+                /* M17: reset verification (--rst).  Triggers the TAS
+                 * DEVICE_CONNECT reset (reset and halt): the device boots
+                 * and stays halted at the reset vector. */
+                if (rst) {
+                    mcd_core_state_st st2;
+                    uint32_t pc0 = 0, pc1 = 0, dbgsr = 0;
+                    uint32_t state_before = MCD_CORE_STATE_UNKNOWN;
+
+                    memset(&st2, 0, sizeof(st2));
+                    r = f_state(core, &st2);
+                    state_before = st2.state;
+                    read_word32(f_txlist, core, 0xF881FE08ull, &pc0);
+                    printf("       [rst] before: state 0x%x PC=0x%08X\n",
+                           (unsigned)st2.state, (unsigned)pc0);
+
+                    r = f_rst(core, 0x7u, TRUE);
+                    CHK(r == MCD_RET_ACT_NONE,
+                        "mcd_rst_f (class vector 0x7, reset and halt)");
+
+                    Sleep(400);
+                    read_word32(f_txlist, core, 0xF881FE08ull, &pc1);
+                    read_word32(f_txlist, core, 0xF881FD00ull, &dbgsr);
+                    printf("       [rst] after: PC=0x%08X DBGSR=0x%08X\n",
+                           (unsigned)pc1, (unsigned)dbgsr);
+                    CHK((dbgsr & 0x6u) == 0x2u,
+                        "DBGSR HALT=01b after reset and halt");
+                    CHK(pc1 != pc0, "PC changed after reset (reset vector)");
+
+                    memset(&st2, 0, sizeof(st2));
+                    r = f_state(core, &st2);
+                    CHK(r == MCD_RET_ACT_NONE &&
+                        st2.state == MCD_CORE_STATE_DEBUG,
+                        "state DEBUG after reset and halt");
+
+                    /* M17b: reset-and-run must leave DBGSR.DE == 1 so a
+                     * later stop works (the plain RESET option leaves
+                     * DE == 0 and the halt write is ignored by hardware). */
+                    r = f_rst(core, 0x7u, FALSE);
+                    CHK(r == MCD_RET_ACT_NONE,
+                        "mcd_rst_f (class vector 0x7, reset and run)");
+                    Sleep(300);
+                    read_word32(f_txlist, core, 0xF881FD00ull, &dbgsr);
+                    CHK((dbgsr & 0x1u) == 0x1u,
+                        "DBGSR DE=1 after reset and run");
+                    CHK((dbgsr & 0x6u) == 0x0u,
+                        "DBGSR HALT=00b after reset and run");
+
+                    r = f_stop(core, FALSE);
+                    CHK(r == MCD_RET_ACT_NONE,
+                        "mcd_stop_f after reset and run");
+                    read_word32(f_txlist, core, 0xF881FD00ull, &dbgsr);
+                    CHK((dbgsr & 0x6u) == 0x2u,
+                        "DBGSR HALT=01b after stop (reset-and-run case)");
+
+                    /* safety invariant: restore the state found at entry */
+                    if (state_before == MCD_CORE_STATE_RUNNING) {
+                        r = f_run(core, FALSE);
+                        CHK(r == MCD_RET_ACT_NONE,
+                            "restore RUNNING (state found at entry)");
+                        printf("       [rst] restored: RUNNING (as found)\n");
+                    } else {
+                        printf("       [rst] restored: DEBUG (as found)\n");
+                    }
                 }
 
                 r = f_closecore(core);

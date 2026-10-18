@@ -1992,6 +1992,27 @@ static mcd_return_et dbgsr_write(mcd_core_slot_t *cs, uint32_t value,
                    (unsigned)pe);
 }
 
+static mcd_return_et dbgsr_read(mcd_core_slot_t *cs, uint32_t *value,
+                                const char *fn)
+{
+    tas_rw_item it;
+    uint8_t pe = 0;
+    int rc;
+
+    memset(&it, 0, sizeof(it));
+    it.addr_map = TAS_AM0;
+    it.addr = MCD_TAS_DBGSR_ADDR;
+    it.num_bytes = 4;
+    it.data = (uint8_t *)value;
+    rc = tas_rw_exec(&cs->conn, &it, 1, cs->con.pl0_max_num_rw, &pe);
+    if (rc == 0 && it.ok)
+        return MCD_RET_ACT_NONE;
+
+    return err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_TXLIST_TX,
+                   "%s: DBGSR read failed (rc %d, pl0_err 0x%02x)", fn, rc,
+                   (unsigned)pe);
+}
+
 static mcd_return_et run_stop_common(const mcd_core_st *core,
                                      mcd_bool_t global, int do_run)
 {
@@ -2023,10 +2044,33 @@ static mcd_return_et run_stop_common(const mcd_core_st *core,
                                       : MCD_TAS_DBGSR_WR_HALT, fn);
             if (r != MCD_RET_ACT_NONE)
                 break;
-            /* Internal model (reference parity: DBGSR is not re-read
-             * after run/stop). */
+            /* M17b: verify with a real DBGSR read.  The halt write is
+             * ignored by hardware while DBGSR.DE == 0 (e.g. after a plain
+             * reset-run), so without this check the state model would
+             * silently diverge from the target. */
+            {
+                uint32_t v = 0;
+                r = dbgsr_read(t, &v, fn);
+                if (r != MCD_RET_ACT_NONE)
+                    break;
+                if (do_run && (((v >> 1) & 3u) != 0u)) {
+                    r = err_set(MCD_RET_ACT_HANDLE_ERROR,
+                                MCD_ERR_DEVICE_ACCESS,
+                                "%s: core did not start (DBGSR=0x%08X)",
+                                fn, (unsigned)v);
+                    break;
+                }
+                if (!do_run && (((v >> 1) & 3u) != 1u)) {
+                    r = err_set(MCD_RET_ACT_HANDLE_ERROR,
+                                MCD_ERR_DEVICE_ACCESS,
+                                "%s: core did not halt (DBGSR=0x%08X; debug "
+                                "disabled after a reset-run?)",
+                                fn, (unsigned)v);
+                    break;
+                }
+                t->st_dbgsr = v;
+            }
             t->st_valid = 1;
-            t->st_dbgsr = do_run ? 0x00001001u : 0x00001003u;
             t->st_state = do_run ? MCD_CORE_STATE_RUNNING
                                  : MCD_CORE_STATE_DEBUG;
             if (!do_run)
@@ -2288,11 +2332,107 @@ mcd_return_et mcd_qry_rst_class_info_f(const mcd_core_st *core,
     return r;
 }
 
+/* M17: reset (mcd_rst_f).
+ *
+ * Mechanism: re-send TAS DEVICE_CONNECT on the active session with the
+ * reset option (tas_pkt.h tas_dev_con_feat_et): 0x0001 RESET (reset, then
+ * run) / 0x0003 RESET_AND_HALT.  This matches the official client API
+ * (CTasClientServerCon::mDeviceConnect(dco); tas_client.h tas_clnt_dco_et
+ * TAS_CLNT_DCO_RESET / _RESET_AND_HALT); the reference mcdxdas.dll reaches
+ * its own reset method (mcd_rst_f 0x180006350 -> vtbl +0x140).  The TAS
+ * backend triggers the device's standard reset and does not select a reset
+ * class, so any advertised class vector (0x7) maps to the same reset. */
 mcd_return_et mcd_rst_f(const mcd_core_st *core, uint32_t rst_class_vector,
                         mcd_bool_t rst_and_halt)
 {
-    (void)core; (void)rst_class_vector; (void)rst_and_halt;
-    STUB_ENTER("mcd_rst_f")
+    mcd_return_et r = MCD_RET_ACT_NONE;
+    mcd_core_slot_t *cs;
+    uint16_t option;
+    uint16_t feat_used = 0;
+    uint32_t device_type = 0;
+    uint8_t te = 0;
+    int k;
+
+    mcd_lock();
+    err_clear();
+
+    cs = core_slot_from(core);
+    if (cs == NULL) {
+        r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
+                    "mcd_rst_f: unknown core handle");
+    } else if (!cs->attached) {
+        r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_CONNECTION,
+                    "mcd_rst_f: no TAS device session");
+    } else if (rst_class_vector == 0 || (rst_class_vector & ~0x7u) != 0) {
+        r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
+                    "mcd_rst_f: unsupported reset class vector 0x%X",
+                    (unsigned)rst_class_vector);
+    } else {
+        /* Always use RESET_AND_HALT (0x0003): the plain RESET option
+         * (0x0001) leaves DBGSR.DE == 0 (debug disabled after the reset)
+         * and a later DBGSR halt write would be ignored by hardware
+         * (M17b finding).  The server's reset+halt path leaves DE == 1;
+         * for rst_and_halt == FALSE the halt is released with a DBGSR run
+         * write so the device boots with debug enabled. */
+        uint32_t v = 0;
+
+        option = 0x0003u;
+        if (tas_device_connect(&cs->conn, option, &feat_used, &device_type,
+                               &te) != 0 || te != TAS_ERR_OK) {
+            r = err_set(MCD_RET_ACT_HANDLE_ERROR, tas_err_to_mcd(te),
+                        "mcd_rst_f: TAS DEVICE_CONNECT(reset 0x%04X) rejected "
+                        "(tas_err=0x%02x)", (unsigned)option, (unsigned)te);
+        } else if ((feat_used & option) != option) {
+            /* The official client asserts feat_used == dco; the server may
+             * add the UNLOCK bit (0x10), so require the requested bits. */
+            r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_DEVICE_ACCESS,
+                        "mcd_rst_f: reset option not applied "
+                        "(feat_used=0x%04X, requested 0x%04X)",
+                        (unsigned)feat_used, (unsigned)option);
+        } else {
+            if (!rst_and_halt)
+                r = dbgsr_write(cs, MCD_TAS_DBGSR_WR_RUN, "mcd_rst_f");
+
+            if (r == MCD_RET_ACT_NONE)
+                r = dbgsr_read(cs, &v, "mcd_rst_f");
+
+            if (r != MCD_RET_ACT_NONE) {
+                /* error already set by dbgsr_write/read */
+            } else if (rst_and_halt && (((v >> 1) & 3u) != 1u)) {
+                r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_DEVICE_ACCESS,
+                            "mcd_rst_f: core not halted after reset+halt "
+                            "(DBGSR=0x%08X)", (unsigned)v);
+            } else if (!rst_and_halt && (((v >> 1) & 3u) != 0u)) {
+                r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_DEVICE_ACCESS,
+                            "mcd_rst_f: core not running after reset "
+                            "(DBGSR=0x%08X)", (unsigned)v);
+            } else {
+                /* State model (verified by the read above).  Other
+                 * attached slots of the same device get invalidated so
+                 * their next qry_state re-reads DBGSR. */
+                cs->st_valid = 1;
+                cs->st_dbgsr = v;
+                cs->st_state = rst_and_halt ? MCD_CORE_STATE_DEBUG
+                                            : MCD_CORE_STATE_RUNNING;
+                if (rst_and_halt)
+                    cs->st_event = MCD_CORE_EVENT_STOPPED;   /* one-shot */
+                for (k = 0; k < MCD_MAX_CORE_SLOTS; k++) {
+                    if (&g.cores[k] != cs && g.cores[k].used &&
+                        g.cores[k].attached &&
+                        g.cores[k].target == cs->target)
+                        g.cores[k].st_valid = 0;
+                }
+                dbg("mcd_tas: mcd_rst_f: class_vector 0x%X -> DC(reset 0x%04X, "
+                    "feat_used 0x%04X) -> %s (core %d, dbgsr 0x%08X)",
+                    (unsigned)rst_class_vector, (unsigned)option,
+                    (unsigned)feat_used,
+                    rst_and_halt ? "DEBUG" : "RUNNING", cs->core_index,
+                    (unsigned)v);
+            }
+        }
+    }
+    mcd_unlock();
+    return r;
 }
 
 mcd_return_et mcd_chl_open_f(const mcd_core_st *core, mcd_chl_st *channel)
