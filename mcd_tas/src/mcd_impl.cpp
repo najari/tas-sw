@@ -60,6 +60,12 @@
 #define MCD_TAS_TRIG_ADR_OFF    0xF004u
 #define MCD_TAS_TRIG_ACC_OFF    0xFD30u
 #define MCD_TAS_TRIG_UNITS      8
+/* M24-W1: the system timer (STM) - the run_until time base.  TC27x UM
+ * memory map: STM0 = 0xF0000000-0xF00000FF, +0x100 per core (STM1/2);
+ * the TIM0 up-counter is at +0x10 (TC27x UM sec.17.3). */
+#define MCD_TAS_STM_BASE        0xF0000000u
+#define MCD_TAS_STM_STRIDE      0x100u
+#define MCD_TAS_STM_TIM0_OFF    0x10u
 /* TRxEVT field values (TC1.6 UM sec.12.9 TRxEVT): BOD=1 (no BRKOUT pulse)
  * | BBM=1 (break before the instruction executes) | EVTA=010b (Halt). */
 #define MCD_TAS_TRIG_EVT_HALT   0x0000001Au
@@ -2800,11 +2806,97 @@ mcd_return_et mcd_stop_f(const mcd_core_st *core, mcd_bool_t global)
     return run_stop_common(core, global, 0);
 }
 
+static mcd_return_et stm_read(mcd_core_slot_t *cs, uint32_t *value,
+                              const char *fn)
+{
+    tas_rw_item it;
+    uint8_t pe = 0;
+    int rc;
+
+    memset(&it, 0, sizeof(it));
+    it.addr_map = TAS_AM0;
+    it.addr = MCD_TAS_STM_BASE +
+              MCD_TAS_STM_STRIDE * (uint32_t)cs->core_index +
+              MCD_TAS_STM_TIM0_OFF;
+    it.num_bytes = 4;
+    it.data = (uint8_t *)value;
+    rc = tas_rw_exec(&cs->conn, &it, 1, cs->con.pl0_max_num_rw, &pe);
+    if (rc == 0 && it.ok)
+        return MCD_RET_ACT_NONE;
+
+    return err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_TXLIST_TX,
+                   "%s: STM read failed (rc %d, pl0_err 0x%02x)", fn, rc,
+                   (unsigned)pe);
+}
+
 mcd_return_et mcd_run_until_f(const mcd_core_st *core, mcd_bool_t global,
                               mcd_bool_t absolute_time, uint64_t run_until_time)
 {
-    (void)core; (void)global; (void)absolute_time; (void)run_until_time;
-    STUB_ENTER("mcd_run_until_f")
+    /* M24-W1: run the core until the system timer (absolute_time=FALSE:
+     * the target's per-core STM value) or an absolute time in seconds
+     * (TRUE).  TAS backend implementation: [read the STM] -> [the M22b
+     * run sequence] -> [poll] -> [stop].  The wrap-safe 32 bit delta is
+     * used for the timer mode. */
+    mcd_return_et r = MCD_RET_ACT_NONE;
+    mcd_core_slot_t *cs;
+    uint32_t t0 = 0, t1 = 0, delta = 0;
+    uint64_t deadline_ms = 0;
+    int i;
+
+    mcd_lock();
+    err_clear();
+
+    cs = core_slot_from(core);
+    if (cs == NULL) {
+        r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
+                    "mcd_run_until_f: unknown core handle");
+    } else if (!cs->attached) {
+        r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_CONNECTION,
+                    "mcd_run_until_f: no TAS device session");
+    } else if (absolute_time && run_until_time > 3600u) {
+        r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
+                    "mcd_run_until_f: absolute time too large");
+    } else {
+        if (!absolute_time) {
+            r = stm_read(cs, &t0, "mcd_run_until_f");
+            delta = (uint32_t)(run_until_time - (uint64_t)t0);
+            /* a target in the past (or already reached) stops immediately */
+            if ((int32_t)delta <= 0)
+                delta = 0;
+        } else {
+            deadline_ms = GetTickCount64() + run_until_time * 1000ull;
+        }
+        dbg("mcd_tas: run_until t0=0x%08X delta=%u", (unsigned)t0, (unsigned)delta);
+        if (r == MCD_RET_ACT_NONE)
+            r = run_stop_common(core, global, 1);
+        if (r == MCD_RET_ACT_NONE) {
+            /* the poll: 60 s safety budget, 5 ms steps */
+            for (i = 0; i < 12000; i++) {
+                if (!absolute_time) {
+                    r = stm_read(cs, &t1, "mcd_run_until_f");
+                    if (r != MCD_RET_ACT_NONE)
+                        break;
+                    if (i < 3 || (i % 2000) == 0)
+                        dbg("mcd_tas: run_until poll %d t1=0x%08X diff=%u", i, (unsigned)t1, (unsigned)(uint32_t)(t1 - t0));
+                    if ((uint32_t)(t1 - t0) >= delta)
+                        break;
+                } else {
+                    if (GetTickCount64() >= deadline_ms)
+                        break;
+                }
+                Sleep(5);
+            }
+            /* always stop the core again (also on a poll error) */
+            {
+                mcd_return_et rs = run_stop_common(core, global, 0);
+
+                if (r == MCD_RET_ACT_NONE)
+                    r = rs;
+            }
+        }
+    }
+    mcd_unlock();
+    return r;
 }
 
 mcd_return_et mcd_qry_current_time_f(const mcd_core_st *core,

@@ -26,6 +26,7 @@ typedef mcd_return_et (*pfn_qry_cores)(const mcd_core_con_info_st *, uint32_t, u
 typedef void           (*pfn_qry_error)(const mcd_core_st *, mcd_error_info_st *);
 typedef mcd_return_et (*pfn_run)(const mcd_core_st *, mcd_bool_t);
 typedef mcd_return_et (*pfn_stop)(const mcd_core_st *, mcd_bool_t);
+typedef mcd_return_et (*pfn_rununtil)(const mcd_core_st *, mcd_bool_t, mcd_bool_t, uint64_t);
 typedef mcd_return_et (*pfn_rst)(const mcd_core_st *, uint32_t, mcd_bool_t);
 typedef mcd_return_et (*pfn_createtrig)(const mcd_core_st *, void *, uint32_t *);
 typedef mcd_return_et (*pfn_qrytrigset)(const mcd_core_st *, uint32_t, uint32_t *, uint32_t *);
@@ -130,6 +131,7 @@ int main(int argc, char **argv)
     /* unbuffered output: a crashing DLL must not hide prior progress */
     setvbuf(stdout, NULL, _IONBF, 0);
     int runstop = 0;
+    int rununtil = 0;
     int rst = 0;
     int trig = 0;
     int trace = 0;
@@ -141,6 +143,8 @@ int main(int argc, char **argv)
     int step = 0;
     uint32_t stepn = 1;
     int fd10 = 0;
+    uint32_t rd_addrs[16];
+    uint32_t rd_count = 0;
     uint32_t core_sel = 0;
     mcd_return_et r;
     uint32_t n;
@@ -151,6 +155,8 @@ int main(int argc, char **argv)
             attach = 1;
         if (strcmp(argv[i], "--runstop") == 0)
             runstop = 1;
+        if (strcmp(argv[i], "--rununtil") == 0)
+            rununtil = 1;
         if (strcmp(argv[i], "--rst") == 0)
             rst = 1;
         if (strcmp(argv[i], "--trig") == 0)
@@ -173,6 +179,16 @@ int main(int argc, char **argv)
             stepn = (uint32_t)atoi(argv[++i]);
         if (strcmp(argv[i], "--fd10") == 0)
             fd10 = 1;
+        if (strcmp(argv[i], "--rd") == 0 && i + 1 < (uint32_t)argc) {
+            const char *p = argv[++i];
+            uint32_t k = 0;
+            while (*p != 0 && k < 16) {
+                rd_addrs[k++] = (uint32_t)strtoul(p, (char **)&p, 0);
+                if (*p == ',')
+                    p++;
+            }
+            rd_count = k;
+        }
         if (strcmp(argv[i], "--core") == 0 && i + 1 < (uint32_t)argc)
             core_sel = (uint32_t)atoi(argv[++i]);
     }
@@ -209,6 +225,7 @@ int main(int argc, char **argv)
     LOADFN(h, pfn_qry_error,    f_err,     "mcd_qry_error_info_f");
     LOADFN(h, pfn_run,          f_run,     "mcd_run_f");
     LOADFN(h, pfn_stop,         f_stop,    "mcd_stop_f");
+    LOADFN(h, pfn_rununtil,     f_rununtil, "mcd_run_until_f");
     LOADFN(h, pfn_rst,          f_rst,     "mcd_rst_f");
     LOADFN(h, pfn_createtrig,   f_createtrig,   "mcd_create_trig_f");
     LOADFN(h, pfn_qrytrigset,   f_qrytrigset,   "mcd_qry_trig_set_f");
@@ -627,6 +644,22 @@ int main(int argc, char **argv)
                            (unsigned)d2, (unsigned)d0);
                 }
 
+                /* M23: arbitrary read probe (--rd a,b,c...) - read-only */
+                if (rd_count > 0) {
+                    uint32_t k;
+
+                    printf("  -- M23 read probe (--rd) --\n");
+                    for (k = 0; k < rd_count; k++) {
+                        uint32_t v = 0;
+                        if (read_word32(f_txlist, core, rd_addrs[k], &v) == 0)
+                            printf("       [0x%08X] -> 0x%08X\n",
+                                   (unsigned)rd_addrs[k], (unsigned)v);
+                        else
+                            printf("       [0x%08X] read FAILED\n",
+                                   (unsigned)rd_addrs[k]);
+                    }
+                }
+
                 /* M20: local SPR window translation (--spr).  The
                  * reference implementation resolves the core-local
                  * scratchpad windows for the addressed core; TAS only
@@ -838,6 +871,53 @@ int main(int argc, char **argv)
                     } else {
                         printf("       [runstop] restored: DEBUG (as found)\n");
                     }
+                }
+
+                /* M24-W1: run_until verification (--rununtil).  Uses the
+                 * absolute second mode and the target STM timer mode;
+                 * the sequence ends with the core halted again. */
+                if (rununtil) {
+                    mcd_core_state_st st3;
+                    uint64_t e0, e1;
+                    uint32_t stm = 0;
+
+                    e0 = GetTickCount64();
+                    r = f_rununtil(core, FALSE, TRUE, 1);
+                    e1 = GetTickCount64();
+                    CHK(r == MCD_RET_ACT_NONE, "mcd_run_until_f (absolute 1 s)");
+                    if (r != MCD_RET_ACT_NONE) {
+                        mcd_error_info_st ei;
+                        f_err(NULL, &ei);
+                        printf("       [rununtil] error 0x%08x: %s\n",
+                               (unsigned)ei.error_code, ei.error_str);
+                    }
+                    printf("       [rununtil] abs 1s: rc 0x%x elapsed %llu ms\n",
+                           (unsigned)r, (unsigned long long)(e1 - e0));
+                    CHK((e1 - e0) >= 900 && (e1 - e0) <= 2500,
+                        "elapsed ~1 s");
+                    memset(&st3, 0, sizeof(st3));
+                    r = f_state(core, &st3);
+                    CHK(r == MCD_RET_ACT_NONE &&
+                        st3.state == MCD_CORE_STATE_DEBUG,
+                        "state DEBUG after run_until (abs)");
+
+                    read_word32(f_txlist, core, 0xF0000010ull, &stm);
+                    printf("       [rununtil] STM0 now = 0x%08X\n",
+                           (unsigned)stm);
+                    e0 = GetTickCount64();
+                    r = f_rununtil(core, FALSE, FALSE, (uint64_t)stm + 25000000u);
+                    e1 = GetTickCount64();
+                    CHK(r == MCD_RET_ACT_NONE, "mcd_run_until_f (STM +25M)");
+                    printf("       [rununtil] STM +25M: rc 0x%x elapsed %llu ms\\n",
+                           (unsigned)r, (unsigned long long)(e1 - e0));
+                    CHK((e1 - e0) >= 100 && (e1 - e0) <= 5000,
+                        "elapsed within budget (STM rate dependent)");
+                    memset(&st3, 0, sizeof(st3));
+                    r = f_state(core, &st3);
+                    CHK(r == MCD_RET_ACT_NONE &&
+                        st3.state == MCD_CORE_STATE_DEBUG,
+                        "state DEBUG after run_until (STM)");
+                    printf("       [rununtil] restored: DEBUG (as found)\n");
                 }
 
                 /* M17: reset verification (--rst).  Triggers the TAS
