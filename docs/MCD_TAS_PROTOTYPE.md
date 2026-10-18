@@ -30,7 +30,7 @@ TasServer(24817) 백엔드로** 구동하는 프로토타입 DLL(`mcd_tas.dll`)�
 | M17 | reset 실구현 — DEVICE_CONNECT 재전송(0x0003 → 필요시 run 해제)·DBGSR 재판독 검증(M17b: DE 비트 수정) | **완료·검증(§3-Q)** — 리셋 벡터(0xA0000020)·GUI Reset/Reset-and-Halt/Stop 전 구간 |
 | M18 | 트리거(브레이크포인트) 실구현 — OCDS TR0..TR7 직접 프로그래밍(PC/데이터·단일/범위·halt) | **완료·검증(§3-R)** — PC 일치 정지(EVTSRC=TR0EVT)·GUI IP Trigger 전 라이프사이클 |
 | M19 | trace·잔여 함수 원본 교차 캘리브레이션 — 원본 DLL 직접 프로브(신규) | **완료·검증(§3-S)** — 12/12 라인 완전 일치(trace 무음 오류·core_modes 2종·max_payload 16384·trig_info) |
-| M20 | SPR 로컬→전역 변환 — 로컬 DSPR/PSPR 주소를 코어별 버스 별칭으로 해석(M15 잔여 GAP) | **완료·검증(§3-T)** — 수정 전 PL0 오류 → 수정 후 원본 파리티(읽기+쓰기) · GUI 로컬 주소 쓰기/읽기/복원 |
+| M20 | SPR 로컬→전역 변환 — 로컬 DSPR/PSPR 주소를 코어별 버스 별칭으로 해석(M15 잔여 GAP) | **완료·검증(§3-T)** — 수정 전 PL0 오류 → 수정 후 원본 파리티(읽기+쓰기) · GUI 로컬 주소 쓰기/읽기/복원 · **M20b**: reg_map 코어별 PC(원본 교차 40/40) |
 
 ## 1. 구현 범위
 
@@ -365,6 +365,10 @@ trig_set_state 덤프)으로 원본 `mcdxdas.dll`의 레지스터 DB를 전량 �
   `--sprw`(쓰기): 로컬 쓰기 → 버스 리드백 일치 → 원값 복원(원본 파리티) · 회귀 `--trace` ok
 - **GUI**(원본 클라이언트 + 우리 DLL): `0xD0000000` Write/Read → 리드백 `0x5AA55AA5`(M15 북엔드) →
   복원 `0x00000000` — → [m20_dropin/](../m20_dropin/) (로그 6종·화면 3종·DLL 로그 발췌)
+- **M20b — reg_map 코어별 PC**: `qry_reg_map`이 전 코어 `0xF881FE08`(CPU0)을 반환하던 것을
+  코어별 CSFR 윈도(`+0x20000*core`)로 수정 — 원본 교차: core1 `0xF883FE08`·core2 `0xF885FE08`,
+  **전 40개 +0x20000(40/40 일치)** · 라이브 PC 읽기 코어별 상이값 · smoke `--regmap`/`--core N` 신규
+  — → [m20b_dropin/](../m20b_dropin/) (원본/우리 덤프 각 3종)
 
 ## 4. 구현 메모 (정본 근거)
 
@@ -416,6 +420,7 @@ trig_set_state 덤프)으로 원본 `mcdxdas.dll`의 레지스터 DB를 전량 �
   잔여 차이(기록): 서버명 표기(`TasServer` vs `UDAS`)·미export 3종(우리는 API-정합 export)·NULL 인자 방어(우리만).
 - **M20(완료, 2026-10-18)**: SPR 로컬→전역 변환(§3-T) — M15 잔여 GAP 해소(로컬 DSPR/PSPR → 코어별
   버스 별칭), 원본 파리티(읽기+쓰기) · GUI 로컬 주소 쓰기/읽기/복원. **aurixtracing 데몬 통합의 전제 조건.**
+  **M20b**: reg_map 코어별 PC(원본 교차 40/40, 라이브 PC 읽기) — 코어 문맥 계열 파리티 마감.
 - **다음**: 새 요구사항에 한함.
 
 ## 부록. 산출물
