@@ -92,6 +92,33 @@ static int read_word32(pfn_execute_txlist f_txlist, const mcd_core_st *core,
     return 0;
 }
 
+/* Write one 32-bit word through the txlist path (state-changing tests). */
+static int write_word32(pfn_execute_txlist f_txlist, const mcd_core_st *core,
+                        uint64_t addr, uint32_t value)
+{
+    mcd_tx_st tx;
+    uint8_t b[4];
+    mcd_txlist_st tl;
+
+    memset(&tx, 0, sizeof(tx));
+    b[0] = (uint8_t)value;
+    b[1] = (uint8_t)(value >> 8);
+    b[2] = (uint8_t)(value >> 16);
+    b[3] = (uint8_t)(value >> 24);
+    tx.addr.mem_space_id = 1;
+    tx.addr.address = addr;
+    tx.access_type = MCD_TX_AT_W;
+    tx.access_width = 4;
+    tx.num_bytes = 4;
+    tx.data = b;
+    tl.tx = &tx;
+    tl.num_tx = 1;
+    tl.num_tx_ok = 0;
+    if (f_txlist(core, &tl) != MCD_RET_ACT_NONE || tl.num_tx_ok != 1)
+        return -1;
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     HMODULE h;
@@ -108,6 +135,8 @@ int main(int argc, char **argv)
     int spr = 0;
     int sprw = 0;
     int regmap = 0;
+    int stepexp = 0;
+    int stepgo = 0;
     uint32_t core_sel = 0;
     mcd_return_et r;
     uint32_t n;
@@ -130,12 +159,16 @@ int main(int argc, char **argv)
             sprw = 1;
         if (strcmp(argv[i], "--regmap") == 0)
             regmap = 1;
+        if (strcmp(argv[i], "--stepexp") == 0)
+            stepexp = 1;
+        if (strcmp(argv[i], "--stepgo") == 0)
+            stepgo = 1;
         if (strcmp(argv[i], "--core") == 0 && i + 1 < (uint32_t)argc)
             core_sel = (uint32_t)atoi(argv[++i]);
     }
 
     printf("== mcd_tas smoke test ==\n");
-    printf("dll: %s\ncfg: %s\nmode: %s%s%s%s%s%s%s%s\ncore: %u\n\n", dll, cfg ? cfg : "(default)",
+    printf("dll: %s\ncfg: %s\nmode: %s%s%s%s%s%s%s%s%s\ncore: %u\n\n", dll, cfg ? cfg : "(default)",
            attach ? "with core attach (--attach)" : "read-only",
            runstop ? " + run/stop (--runstop)" : "",
            rst ? " + reset (--rst)" : "",
@@ -144,6 +177,8 @@ int main(int argc, char **argv)
            spr ? " + SPR translation (--spr)" : "",
            sprw ? " + SPR write check (--sprw)" : "",
            regmap ? " + reg map dump (--regmap)" : "",
+           stepexp ? (stepgo ? " + step experiment (--stepexp --stepgo)"
+                             : " + step experiment read-only (--stepexp)") : "",
            (unsigned)core_sel);
 
     h = LoadLibraryA(dll);
@@ -453,6 +488,68 @@ int main(int argc, char **argv)
                             else
                                 printf("       PC live read @0x%08llX FAILED\n",
                                        (unsigned long long)pc_addr);
+                        }
+                    }
+                }
+
+                /* Step investigation (--stepexp / --stepgo).  Replicates the
+                 * reference mcdxdas TC27x step sequence (FUN_18000b5d0):
+                 *   read FE60; if bit0 set -> write 0
+                 *   write DBGSR <- 4
+                 *   the core must be halted again afterwards (single step).
+                 * Without --stepgo this mode is read-only (state probe). */
+                if (stepexp) {
+                    uint32_t csfr = 0xF8810000u + 0x20000u * core_sel;
+                    uint32_t dbgsr = 0, fe60 = 0, pc0 = 0, pc1 = 0, dbgsr1 = 0;
+                    uint32_t aux = 0;
+
+                    printf("  -- step experiment (--stepexp%s) --\n",
+                           stepgo ? " --stepgo" : " read-only");
+                    read_word32(f_txlist, core, csfr + 0xFD00u, &dbgsr);
+                    read_word32(f_txlist, core, csfr + 0xFE60u, &fe60);
+                    read_word32(f_txlist, core, csfr + 0xFE08u, &pc0);
+                    printf("       DBGSR 0x%08X  FE60 0x%08X  PC 0x%08X\n",
+                           (unsigned)dbgsr, (unsigned)fe60, (unsigned)pc0);
+                    if (read_word32(f_txlist, core, 0xF000049Cu, &aux) == 0)
+                        printf("       adapter 0xF000049C -> 0x%08X\n", (unsigned)aux);
+                    else
+                        printf("       adapter 0xF000049C read failed\n");
+                    if (read_word32(f_txlist, core, 0xFA1802C0u, &aux) == 0)
+                        printf("       IOV 0xFA1802C0 -> 0x%08X\n", (unsigned)aux);
+                    else
+                        printf("       IOV 0xFA1802C0 read failed\n");
+
+                    if (stepgo) {
+                        uint32_t tmp = 0;
+
+                        if (fe60 & 1u) {
+                            write_word32(f_txlist, core, csfr + 0xFE60u, 0);
+                            read_word32(f_txlist, core, csfr + 0xFE60u, &tmp);
+                            printf("       FE60 bit0 was set -> cleared (now 0x%08X)\n",
+                                   (unsigned)tmp);
+                        } else {
+                            printf("       FE60 bit0 was clear (no clear needed)\n");
+                        }
+                        write_word32(f_txlist, core, csfr + 0xFD00u, 4);
+                        Sleep(150);
+                        read_word32(f_txlist, core, csfr + 0xFD00u, &dbgsr1);
+                        read_word32(f_txlist, core, csfr + 0xFE08u, &pc1);
+                        printf("       after DBGSR<-4: DBGSR 0x%08X  PC 0x%08X (delta %d)\n",
+                               (unsigned)dbgsr1, (unsigned)pc1,
+                               (int)(pc1 - pc0));
+                        if ((dbgsr1 & 2u) != 0) {
+                            printf("       [verdict] core halted again (HALT=01b)\n");
+                            if (pc1 != pc0)
+                                printf("       [verdict] PC advanced -> SINGLE STEP\n");
+                        } else {
+                            printf("       [verdict] core RUNNING -> not single step;"
+                                   " applying safety stop\n");
+                            write_word32(f_txlist, core, csfr + 0xFD00u, 6);
+                            Sleep(150);
+                            read_word32(f_txlist, core, csfr + 0xFD00u, &dbgsr1);
+                            read_word32(f_txlist, core, csfr + 0xFE08u, &pc1);
+                            printf("       after safety stop: DBGSR 0x%08X  PC 0x%08X\n",
+                                   (unsigned)dbgsr1, (unsigned)pc1);
                         }
                     }
                 }

@@ -142,14 +142,21 @@ CHL 5종(open/send/receive/reset/close), `qry_input_handle`
   (화면: `gui_test\m17*.png` · 로그: `drop_in\client_stderr35/36.log`)
 - 배포: `drop_in\mcdxdas.dll` = SHA256 `29A1573B735F71A8…` (M17b)
 
-## step·run_until 조사 결과 (2026-10-18)
+## step·run_until 조사 결과 (2026-10-18, M21 갱신)
 
-- **`mcd_step_f`(싱글스텝) — raw TAS로 구현 불가**:
-  - 메커니즘: CDC 하드웨어 싱글스텝(코어 UM p176 "Single-Step support in hardware") — OCDS/DAP 경유.
-    원본 mcdxdas는 **vtable+0x160** 내부 메서드(rst+0x140·run+0x148·stop+0x168와 별개, DAS/DAP 계열).
-  - raw TAS 노출 수단 없음: AM15 레지스터 목록 전체 확인(raw JTAG 프리미티브 SET_IR/CAPTURE/
-    DATA_SHIFT/CLOCK_CYCLES·리셋 핀·주파수만), DC 옵션(RESET/HALT/UNLOCK)에 step 없음, 서버 문자열에 step 없음.
-  - 구현 경로: **DAP/Cerberus 프로토콜을 AM15 raw JTAG 위에 구현**하는 별도 서브프로젝트 필요.
+- **`mcd_step_f`(싱글스텝) — 원본 메커니즘 규명(M21)**:
+  - 원본 시퀀스(REA 정적 + 실측): 정지 상태 확인 → **FE60(CSFR+0xFE60) bit0 처리** →
+    **DBGSR(CSFR+0xFD00) ← 4** (count회) → 정지 재확인(`"Core did not complete single step"`).
+    API는 `mcd_step_f(core, global, step_type, count)` — INSTR(0x2)/CUSTOM_LO(0x100+)만 지원.
+  - 레지스터 R/W는 세션 상태별 **두 다이얼렉트**: state 3/4 = PL0(0x2x, 우리 경로) ·
+    state 1/2 = **≥0x40 DAS 고유 아이템(0x84+opcode)** — 원본의 디버그 접근은 DAS 다이얼렉트로 나감.
+  - **GO 실험(승인 하)**: 우리 PL0 경로의 DBGSR←4 = **싱글스텝 아님**(홀드 해제/프리런) — 실측.
+    안전 정지(DBGSR←6) 정상 ✓. 최종 상태 Debug 복원.
+  - 결론: step 구현은 **DAS 다이얼렉트(≥0x40 아이템/opcode) 구현**이 필요(프레임 빌더 RE + 서버 실험,
+    신규 서브프로젝트급). 대안(불완전): 트리거 기반 소프트웨어 스텝(비분기 명령만 성립).
+  - 부수: 원본 "debug state"는 DBGSR.HALT=00b(디버거 홀드 `0x1001`)일 수 있음 — 우리 `qry_state`는
+    이 경우 RUNNING으로 오판 가능(0x1003=DBGSR 정지는 양쪽 일치).
+  - 도구: smoke `--stepexp`(읽기 전용)/`--stepgo`(GO) — 증거 `m21_dropin/`
 - `mcd_run_until_f`: 대상 시간 소스(`qry_current_time`) 미확보 — 동일 계열 후속.
 
 ## M18 구현 — 트리거(브레이크포인트) (2026-10-18)
