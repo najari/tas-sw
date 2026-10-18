@@ -1,0 +1,27 @@
+LIBRARY mcdsdl
+EXPORTS
+    mcdsdl_lib_init
+    mcdsdl_lib_version
+    mcdsdl_get_error
+    mcdsdl_clear
+    mcdsdl_get_error_counter
+    mcdsdl_get_trace_marker
+    mcdsdl_get_num_msg
+    mcdsdl_get_msg
+    mcdsdl_get_next_msg
+    mcdsdl_get_previous_msg
+    mcdsdl_mcds_file_load
+    mcdsdl_mcds_file_save
+    mcdsdl_elf_file_load
+    mcdsdl_elf_file_unload_all
+    mcdsdl_get_code_symbol
+    mcdsdl_get_data_symbol
+    mcdsdl_get_code_symbol_addr
+    mcdsdl_get_data_symbol_addr
+    mcdsdl_set_mcdsconfig
+    mcdsdl_set_mcdsconfig_with_file
+    mcdsdl_set_device_callback
+    mcdsdl_decode
+    mcdsdl_get_msg_str
+    mcdsdl_get_instr
+    mcdsdl_get_instr_type
