@@ -176,6 +176,65 @@ int main(int argc, char **argv)
         printf("       elf_file_unload_all done\n");
     }
 
+    /* 5c. the get_msg_str matrix (the synthetic messages - the message-type
+     * formatting cross-check, no trace data needed!) */
+    {
+        static const uint32_t types[] = { 0, 1, 4, 10, 11, 13, 22, 21,
+                                          23, 27, 30, 20, 24 };
+        int ti;
+
+        for (ti = 0; ti < (int)(sizeof(types) / sizeof(types[0])); ti++) {
+            mcdsdl_msg_st m;
+            mcdsdl_msg_str_st ms;
+            uint32_t rc;
+
+            memset(&m, 0, sizeof(m));
+            memset(&ms, 0, sizeof(ms));
+            m.time_r = 0x1234;
+            m.index = 0;
+            m.msg_type = (mctrl_msg_type_et)types[ti];
+            rc = f_msgstr(&m, (mcdsdl_msg_str_option_et)MCDSDL_MSO_COMMENT,
+                          0, &ms);
+            printf("       msgstr(type=%2u) rc %u ticks '%s' opoint '%s' "
+                   "origin '%s' op '%s' addr '%s' data '%s' comment '%s'\n",
+                   (unsigned)types[ti], (unsigned)rc,
+                   ms.ticks ? ms.ticks : "(null)",
+                   ms.opoint ? ms.opoint : "(null)",
+                   ms.origin ? ms.origin : "(null)",
+                   ms.operation ? ms.operation : "(null)",
+                   ms.addr ? ms.addr : "(null)",
+                   ms.data ? ms.data : "(null)",
+                   ms.comment ? ms.comment : "(null)");
+        }
+    }
+
+    /* 5b. the engine stubs (the honest behaviour!) */
+    {
+        uint32_t instr = 0xDEADBEEF, isz = 0xDEADBEEF;
+        const mcd_char_t *istr = (const mcd_char_t *)0xDEADBEEF;
+        int32_t off = 0xDEADBEEF;
+        mcd_bool_t abs = 0xDEADBEEF;
+
+        r = f_instr((mctrl_opoint_et)0, 0x80000000u, &instr, &isz, &istr);
+        printf("       get_instr rc 0x%08X instr 0x%X size %u str %s\n",
+               (unsigned)r, (unsigned)instr, (unsigned)isz,
+               (istr == NULL) ? "NULL" : "set");
+
+        printf("       get_instr_type(0x1D000000) = %d (0=UNKNOWN)\n",
+               (int)f_itype(0x1D000000u, &off, &abs));
+    }
+
+    /* 6. the save (the header round-trip!) */
+    {
+        const char *out = "C:\\work\\mcdsdl\\tests\\test_save.mcds";
+
+        r = f_save(out, 0, 0);
+        printf("       mcds_file_save('%s') rc 0x%08X\n", out, (unsigned)r);
+        r = f_load(out);
+        printf("       reload rc 0x%08X num_msg %d\n", (unsigned)r,
+               (int)f_num());
+    }
+
     /* 5. the decode edge cases (the TDF/DM dispatch matrix - cross-check!) */
     {
         static uint8_t dummy[16] = { 0 };
@@ -205,33 +264,6 @@ int main(int argc, char **argv)
                    (unsigned)cases[ci].tdf, (unsigned)cases[ci].dm,
                    (unsigned)r, f_error() ? f_error() : "(none)");
         }
-    }
-
-    /* 5b. the engine stubs (the honest behaviour!) */
-    {
-        uint32_t instr = 0xDEADBEEF, isz = 0xDEADBEEF;
-        const mcd_char_t *istr = (const mcd_char_t *)0xDEADBEEF;
-        int32_t off = 0xDEADBEEF;
-        mcd_bool_t abs = 0xDEADBEEF;
-
-        r = f_instr((mctrl_opoint_et)0, 0x80000000u, &instr, &isz, &istr);
-        printf("       get_instr rc 0x%08X instr 0x%X size %u str %s\n",
-               (unsigned)r, (unsigned)instr, (unsigned)isz,
-               (istr == NULL) ? "NULL" : "set");
-
-        printf("       get_instr_type(0x1D000000) = %d (0=UNKNOWN)\n",
-               (int)f_itype(0x1D000000u, &off, &abs));
-    }
-
-    /* 6. the save (the header round-trip!) */
-    {
-        const char *out = "C:\\work\\mcdsdl\\tests\\test_save.mcds";
-
-        r = f_save(out, 0, 0);
-        printf("       mcds_file_save('%s') rc 0x%08X\n", out, (unsigned)r);
-        r = f_load(out);
-        printf("       reload rc 0x%08X num_msg %d\n", (unsigned)r,
-               (int)f_num());
     }
 
     FreeLibrary(h);

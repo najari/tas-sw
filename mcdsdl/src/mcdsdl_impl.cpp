@@ -884,35 +884,71 @@ uint32_t mcdsdl_get_msg_str(const mcdsdl_msg_st *msg,
                             mcdsdl_msg_str_option_et mso, uint32_t line,
                             mcdsdl_msg_str_st *msg_str)
 {
-    static char buf_ticks[64];
-    static char buf_opoint[32];
-    static char buf_origin[64];
-    static char buf_operation[64];
-    static char buf_addr[32];
-    static char buf_data[32];
+    /* the reference behaviour (calibrated with the synthetic-message
+     * matrix): every field defaults to the empty string; the COMMENT
+     * option carries the fixed strings per message type. The BASIC
+     * fields are engine-driven (the reference crashes on synthetic
+     * messages there) and stay empty in this prototype. */
+    static const char s_empty[] = "";
+    static const char s_iftg[] =
+        "Trace gap due to fill level of on-chip trace buffer";
+    static const char s_fifo[] =
+        "MCDS message fifo overrun in observation block";
+    static const char s_fifo_ptu[] =
+        "MCDS message fifo overrun in observation block (PTU)";
+    static const char s_other[] = "Message can't be decoded";
+    static const char s_no_msg[] = "ERROR no msg available";
 
     if (msg == NULL || msg_str == NULL)
         return 0;
     memset(msg_str, 0, sizeof(*msg_str));
     (void)line;
 
-    /* the basic formatting for the messages that carry plain data.
-     * The full message-type zoo of the reference decoder is part of the
-     * engine and is not reproduced here. */
-    if (mso & MCDSDL_MSO_BASIC) {
-        snprintf(buf_ticks, sizeof(buf_ticks), "%lld",
-                 (long long)msg->time_r);
-        snprintf(buf_opoint, sizeof(buf_opoint), "0x%X",
-                 (unsigned)msg->opoint);
-        snprintf(buf_origin, sizeof(buf_origin), "0x%X",
-                 (unsigned)msg->oblock);
-        snprintf(buf_operation, sizeof(buf_operation), "%u",
-                 (unsigned)msg->msg_type);
-        msg_str->ticks = buf_ticks;
-        msg_str->opoint = buf_opoint;
-        msg_str->origin = buf_origin;
-        msg_str->operation = buf_operation;
-        msg_str->trace_state = "";
+    msg_str->ticks = s_empty;
+    msg_str->opoint = s_empty;
+    msg_str->origin = s_empty;
+    msg_str->operation = s_empty;
+    msg_str->addr = s_empty;
+    msg_str->data = s_empty;
+    msg_str->trace_state = s_empty;
+    msg_str->symbol = s_empty;
+    msg_str->symbol_offset = s_empty;
+    msg_str->comment = s_empty;
+    msg_str->stream_state = s_empty;
+    msg_str->cft = s_empty;
+    msg_str->tdr_msg = s_empty;
+    msg_str->tdr_addr = s_empty;
+    msg_str->tdr_len = s_empty;
+    msg_str->tdr_msg_head = s_empty;
+
+    if (mso & MCDSDL_MSO_COMMENT) {
+        const char *c = NULL;
+
+        switch ((uint32_t)msg->msg_type) {
+        case 4:                 /* MCTRL_MT_IFTG */
+            c = s_iftg;
+            break;
+        case 10:                /* MCTRL_MT_ERROR_MSG_FIFO */
+            c = s_fifo;
+            break;
+        case 11:                /* MCTRL_MT_ERROR_MSG_FIFO_PTU */
+            c = s_fifo_ptu;
+            break;
+        case 13:                /* MCTRL_MT_ERROR_MSG_OTHER */
+            c = s_other;
+            break;
+        case 27:                /* MCTRL_MT_OTGB */
+        case 30:                /* MCTRL_MT_PTU */
+            c = s_no_msg;
+            break;
+        default:
+            /* 21/23 depend on message data (engine); 20/24 depend on the
+             * device config - the reference crashes on synthetic input */
+            c = NULL;
+            break;
+        }
+        if (c != NULL)
+            msg_str->comment = c;
     }
     return 1;
 }

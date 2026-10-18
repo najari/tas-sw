@@ -1,0 +1,32 @@
+== mcdsdl smoke test (M24-1 API surface) ==
+dll: C:\Program Files\DAS64\clients\mcds_decoder.dll
+
+all 25 exports resolved
+
+  [ok]   mcdsdl_lib_init(4)
+  [ok]   mcdsdl_lib_version
+       version 4.1.0
+  [ok]   get_num_msg == 0 (no decode)
+       get_msg(0) rc 0xFFFFFFFF err '(none)'
+       error_counter sum 0x0
+       marker num_msg 0
+       mcds_file_load('C:\work\tas_server_analysis\m23_rec_orig.mcds') rc 0x00400000
+       error: ERROR no trace data in file
+       num_msg after load: 0
+  [ok]   elf_file_load(test_elf.elf)
+       code_symbol(0x80000100): ok 1 name 'test_func_a' start 0x80000100 size 64
+       data_symbol(0x70000004): ok 1 name 'test_data_x' start 0x70000000 size 16
+       code_symbol_addr('test_func_a'): ok 1 start 0x80000100 size 63
+       data_symbol_addr('test_data_x'): ok 1 start 0x70000000 size 15
+       elf_file_unload_all done
+       msgstr(type= 0) rc 1 ticks '' opoint '' origin '' op '' addr '' data '' comment ''
+       msgstr(type= 1) rc 1 ticks '' opoint '' origin '' op '' addr '' data '' comment ''
+       msgstr(type= 4) rc 1 ticks '' opoint '' origin '' op '' addr '' data '' comment 'Trace gap due to fill level of on-chip trace buffer'
+       msgstr(type=10) rc 1 ticks '' opoint '' origin '' op '' addr '' data '' comment 'MCDS message fifo overrun in observation block'
+       msgstr(type=11) rc 1 ticks '' opoint '' origin '' op '' addr '' data '' comment 'MCDS message fifo overrun in observation block (PTU)'
+       msgstr(type=13) rc 1 ticks '' opoint '' origin '' op '' addr '' data '' comment 'Message can't be decoded'
+       msgstr(type=22) rc 1 ticks '' opoint '' origin '' op '' addr '' data '' comment ''
+       msgstr(type=21) rc 1 ticks '' opoint '' origin '' op '' addr '' data '' comment ''
+       msgstr(type=23) rc 1 ticks '' opoint '' origin '' op '' addr '' data '' comment ''
+       msgstr(type=27) rc 1 ticks '' opoint '' origin '' op '' addr '' data '' comment 'ERROR no msg available'
+       msgstr(type=30) rc 1 ticks '' opoint '' origin '' op '' addr '' data '' comment 'ERROR no msg available'
