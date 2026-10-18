@@ -27,10 +27,11 @@ TasServer(24817) 백엔드로** 구동하는 프로토타입 DLL(`mcd_tas.dll`)�
 | M11 | Run(HALT=00b) 실관찰 캘리브레이션 (승인 하 원본 GUI Run/Stop) | **완료·검증(§3-N)** — 실행 중 `state=1`/IP 진행 · 정지 복귀 · DBGSR RUNNING 경로 실증 |
 | M12 | GUI Write 검증 (승인 하 타깃 메모리 쓰기) — LMU 스크래치 셀 쓰기/Read-back/원값 복원 + 원본 파리티 | **완료·검증(§3-O)** — `PL0_OK` · read-back 일치 · 최종 원값 복원 · 실패 모달 재규명(M6 정정) |
 | M16 | run/stop 실구현 — DBGSR 쓰기(run=0x4/stop=0x6)·내부 상태 모델·1회성 STOPPED 이벤트 + trig_set 성공 no-op | **완료·검증(§3-P)** — smoke 라이브(DBGSR 독립 재판독) + 원본 클라이언트 GUI Run/Stop 전 구간 |
+| M17 | reset 실구현 — DEVICE_CONNECT 재전송(0x0003 → 필요시 run 해제)·DBGSR 재판독 검증(M17b: DE 비트 수정) | **완료·검증(§3-Q)** — 리셋 벡터(0xA0000020)·GUI Reset/Reset-and-Halt/Stop 전 구간 |
 
 ## 1. 구현 범위
 
-54개 함수 중 **실동작 23개 + 정직 고정응답 13개 + 성공 no-op 2개 + 스텁 16개**(미구현은 `MCD_ERR_FN_UNIMPLEMENTED` + 함수명 메시지, `mcd_qry_error_info_f`로 조회) — M16 기준.
+54개 함수 중 **실동작 24개 + 정직 고정응답 13개 + 성공 no-op 2개 + 스텁 15개**(미구현은 `MCD_ERR_FN_UNIMPLEMENTED` + 함수명 메시지, `mcd_qry_error_info_f`로 조회) — M17 기준.
 
 - **M1 (11)**: `mcd_initialize_f` `mcd_exit_f` `mcd_qry_servers_f` `mcd_open_server_f` `mcd_close_server_f`
   `mcd_set_server_config_f` `mcd_qry_server_config_f` `mcd_qry_systems_f` `mcd_qry_devices_f`
@@ -40,6 +41,7 @@ TasServer(24817) 백엔드로** 구동하는 프로토타입 DLL(`mcd_tas.dll`)�
 - **M4 (1)**: `mcd_qry_reg_map_f` (group 0/1 → 단일 `PC` 레지스터; `mcd_qry_reg_groups_f`도 'CPU' 그룹·1레지스터로 보강)
 - **M16 (2+2)**: `mcd_run_f` `mcd_stop_f` 실구현(DBGSR 쓰기) · `mcd_activate_trig_set_f`
   `mcd_remove_trig_set_f` 성공 no-op (트리거 세트는 항상 비어 있음 — 원본 클라이언트 Run 시퀀스 대응, §3-P)
+- **M17 (1)**: `mcd_rst_f` 실구현 — DC 0x0003(+필요시 run 해제) 재전송, DE=1 유지, DBGSR 재판독 검증(§3-Q)
 
 ### 1.1 M2 동작 요약
 
@@ -301,6 +303,18 @@ trig_set_state 덤프)으로 원본 `mcdxdas.dll`의 레지스터 DB를 전량 �
   M6 원본 캘리브레이션과 동일 표시·자동 복구
 - 참고: EVTSRC 차이(원본 stop=TR0EVT `0x10xx` vs DBGSR 쓰기=EXEVT `0x000x`) — 상태 판정과 무관
 
+### Q. M17 — reset 실구현 + GUI 검증 (2026-10-18)
+
+- **메커니즘**: 활성 세션에서 TAS DEVICE_CONNECT(0xA8) 재전송 — 공식 client API
+  (`CTasClientServerCon::mDeviceConnect(dco)`, `tas_clnt_dco_et RESET/RESET_AND_HALT`)와 동일 계열
+- **M17b(DE 비트)**: DC `0x0001`(RESET)은 리셋 후 `DBGSR.DE=0`을 남겨 이후 halt 쓰기가 하드웨어에서
+  무시됨(무음 실패 발견 — GUI Stop 후 IP가 계속 진행). 수정: 항상 `0x0003`(RESET_AND_HALT) 후
+  `rst_and_halt=FALSE`면 run 쓰기(0x4)로 해제(**DE=1 유지**); run/stop/rst에 **실제 DBGSR 재판독 검증** 추가
+- **smoke 검증**(`--attach --rst`): 리셋 후 **PC=0xA0000020(리셋 벡터)·DBGSR=0x00001013** —
+  2012 MCD 데모 로그의 `rsthlt` 결과와 동일 · reset-and-run → stop → `HALT=01b` ✓ · 실패 0
+- **GUI 검증**: "Reset and Halt"→Debug(PC 0xA0000020) · "Reset"→Running(DE=1) ·
+  **"Stop"→Debug·IP 고정**(M17b 수정 확인) → [m17_dropin/](../m17_dropin/) (화면 5종·로그 발췌·smoke 2종)
+
 ## 4. 구현 메모 (정본 근거)
 
 - **프레임 빌더** (`tas_pkt_handler_rw.cpp` 규칙, §8 실측과 일치):
@@ -341,7 +355,9 @@ trig_set_state 덤프)으로 원본 `mcdxdas.dll`의 레지스터 DB를 전량 �
   `mcds_recorder.dll`) — DLL 드롭인과 무관. 상세: [MCD_TOOLS_ANALYSIS.md](MCD_TOOLS_ANALYSIS.md) §3.8
   · [m13_dropin/](../m13_dropin/).
 - **M16(완료, 2026-10-18)**: run/stop 실구현(§3-P) — DBGSR 쓰기·1회성 STOPPED 이벤트·trig_set no-op,
-  smoke + GUI 전 구간 검증. **미구현 유지**: `rst`(미드세션 리셋 캘리브레이션 필요)·`step`·`run_until`.
+  smoke + GUI 전 구간 검증. **미구현 유지**: `rst`(→M17에서 구현)·`step`·`run_until`.
+- **M17(완료, 2026-10-18)**: reset 실구현(§3-Q) — DC 재전송·DBGSR 검증·DE 비트 수정(M17b).
+  **미구현 유지**: `step`·`run_until`·트리거 생성·CHL/trace.
 - **다음**: 새 요구사항에 한함.
 
 ## 부록. 산출물

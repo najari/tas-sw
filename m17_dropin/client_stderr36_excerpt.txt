@@ -1,0 +1,3 @@
+mcd_tas: session attached to 'DAS JTAG AURDUINO 46YPEADW' (device 0x401DA083, feat 0x0000, max_rw 32)
+mcd_tas: mcd_rst_f: class_vector 0x1 -> DC(reset 0x0003, feat_used 0x0003) -> RUNNING (core 0, dbgsr 0x00001001)
+mcd_tas: mcd_stop_f: DBGSR <- 0x00000006 -> DEBUG (core 0)
