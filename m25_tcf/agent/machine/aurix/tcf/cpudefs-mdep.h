@@ -47,4 +47,9 @@ extern unsigned char BREAK_INST[2];
 extern void ini_cpudefs_mdep(void);
 #endif
 
+#if !defined(ENABLE_add_cpudefs_disassembler)
+#define ENABLE_add_cpudefs_disassembler 1
+extern void add_cpudefs_disassembler(Context * cpu_ctx);
+#endif
+
 #endif /* D_cpudefs_mdep_aurix */

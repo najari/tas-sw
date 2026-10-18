@@ -716,6 +716,14 @@ int context_write_reg(Context * ctx, RegisterDefinition * def, unsigned offs,
 }
 
 Context * context_get_group(Context * ctx, int group) {
+    static int disassembler_inited = 0;
+
+    /* register the TriCore disassembler once (the Disassembly service
+     * looks it up through the CPU group context) */
+    if (!disassembler_inited) {
+        disassembler_inited = 1;
+        ini_cpu_disassembler(ctx);
+    }
     (void)group;
     /* every core is its own process / breakpoint / intercept group */
     return ctx;

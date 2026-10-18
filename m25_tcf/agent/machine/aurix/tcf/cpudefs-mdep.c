@@ -20,8 +20,10 @@
 #include <tcf/framework/context.h>
 #include <tcf/framework/cpudefs.h>
 #include <tcf/framework/errors.h>
+#include <tcf/services/disassembly.h>
 
 #include <tcf/cpudefs-mdep.h>
+#include <machine/aurix/tcf/disassembler-aurix-tricore.h>
 
 #define REG_OFFSET(name) offsetof(REG_SET, name)
 #define D_OFF(i)         (offsetof(REG_SET, d) + 4 * (i))
@@ -134,6 +136,12 @@ RegisterDefinition * get_PC_definition(Context * ctx) {
     }
     return reg_def;
 }
+
+#if defined(ENABLE_add_cpudefs_disassembler) && ENABLE_add_cpudefs_disassembler
+void add_cpudefs_disassembler(Context * cpu_ctx) {
+    add_disassembler(cpu_ctx, "TriCore", disassemble_tricore);
+}
+#endif
 
 /*
  * Stack crawl is not implemented yet (M25-3): the TriCore unwinding uses
