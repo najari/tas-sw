@@ -182,7 +182,7 @@ static int probe_ed(void)
     int rc;
 
     memset(&it, 0, sizeof(it));
-    it.addr_map = TAS_AM0;
+    it.addr_map = 0;   /* the public access: the caller's map (0) */
     it.addr = 0x50000000u;
     it.num_bytes = 4;
     it.data = (uint8_t *)&v;
@@ -391,9 +391,9 @@ mcdsl_return_et mcdsrl_connect_device(const mcd_core_con_info_st *con_requested,
         /* The MCDS parameter set for the TC2xx miniMCDS devices (from the
          * reference device table and FUN_180005c40): the control register
          * window, the FIFO/status window and the EMEM base. */
-        g.mcds_ctrl_base = ed ? 0xF90E6000u : 0u;
-        g.mcds_status_base = ed ? 0xF90E8000u : 0u;
-        g.mcds_emem_base = ed ? 0x9F000000u : 0u;
+        g.mcds_ctrl_base = ed ? 0xF00E6000u : 0u;
+        g.mcds_status_base = ed ? 0xF00E8000u : 0u;
+        g.mcds_emem_base = ed ? 0xAF000000u : 0u;
     }
     g.device_id_short = 0;
     g.device_class = 0;
@@ -520,7 +520,7 @@ mcdsl_return_et mcdsrl_read(uint32_t addr, uint32_t *value)
         return err_set(MCDSL_RET_FUNCTION_USED_WRONGLY, "value is NULL");
 
     memset(&it, 0, sizeof(it));
-    it.addr_map = TAS_AM0;
+    it.addr_map = 0;   /* the public access: the caller's map (0) */
     it.addr = addr;
     it.num_bytes = 4;
     it.data = (uint8_t *)value;
@@ -544,7 +544,7 @@ mcdsl_return_et mcdsrl_write(uint32_t addr, uint32_t value)
         return r;
 
     memset(&it, 0, sizeof(it));
-    it.addr_map = TAS_AM0;
+    it.addr_map = 0;   /* the public access: the caller's map (0) */
     it.addr = addr;
     it.num_bytes = 4;
     it.is_write = 1;
@@ -576,7 +576,7 @@ mcdsl_return_et mcdsrl_read_list(const uint32_t *addr, uint32_t *value,
 
     memset(items, 0, sizeof(items));
     for (i = 0; i < num; i++) {
-        items[i].addr_map = TAS_AM0;
+        items[i].addr_map = 0;   /* the public access: the caller's map */
         items[i].addr = addr[i];
         items[i].num_bytes = 4;
         items[i].data = (uint8_t *)&value[i];
@@ -592,9 +592,12 @@ mcdsl_return_et mcdsrl_read_list(const uint32_t *addr, uint32_t *value,
         return MCDSL_RET_SUCCESS;
     }
     if (rc == 0) {
+        uint32_t fi = 0;
+        while (fi < num && items[fi].ok)
+            fi++;
         err_set(MCDSL_RET_DEVICE_DATA,
-                "mcdsrl_read_list: %u of %u accesses failed (pl0_err=0x%02x)",
-                (unsigned)(num - ok), (unsigned)num, (unsigned)pe);
+                "ERROR: Read of addr %llX in addr_map %d failed",
+                (unsigned long long)addr[fi], (int)1);
         return MCDSL_RET_DEVICE_DATA;
     }
     return map_rw_result(rc, pe, "mcdsrl_read_list");
@@ -619,7 +622,9 @@ mcdsl_return_et mcdsrl_write_list(const uint32_t *addr, const uint32_t *value,
 
     memset(items, 0, sizeof(items));
     for (i = 0; i < num; i++) {
-        items[i].addr_map = TAS_AM0;
+        /* the reference writes the MCDS configuration in the EEC address
+         * map (DAS map 1 - TC27x UM 1.4.4); TAS map id 1 */
+        items[i].addr_map = 0;
         items[i].addr = addr[i];
         items[i].num_bytes = 4;
         items[i].is_write = 1;
@@ -636,9 +641,12 @@ mcdsl_return_et mcdsrl_write_list(const uint32_t *addr, const uint32_t *value,
         return MCDSL_RET_SUCCESS;
     }
     if (rc == 0) {
+        uint32_t fi = 0;
+        while (fi < num && items[fi].ok)
+            fi++;
         err_set(MCDSL_RET_DEVICE_DATA,
-                "mcdsrl_write_list: %u of %u accesses failed (pl0_err=0x%02x)",
-                (unsigned)(num - ok), (unsigned)num, (unsigned)pe);
+                "ERROR: Write of addr %llX in addr_map %d failed",
+                (unsigned long long)addr[fi], (int)1);
         return MCDSL_RET_DEVICE_DATA;
     }
     return map_rw_result(rc, pe, "mcdsrl_write_list");
@@ -660,7 +668,7 @@ mcdsl_return_et mcdsrl_read_block(uint32_t addr, void *data,
                        "invalid block parameters");
 
     memset(&it, 0, sizeof(it));
-    it.addr_map = TAS_AM0;
+    it.addr_map = 0;   /* the public access: the caller's map (0) */
     it.addr = addr;
     it.num_bytes = num_bytes;
     it.data = (uint8_t *)data;
@@ -690,7 +698,7 @@ mcdsl_return_et mcdsrl_write_block(uint32_t addr, const void *data,
                        "invalid block parameters");
 
     memset(&it, 0, sizeof(it));
-    it.addr_map = TAS_AM0;
+    it.addr_map = 0;   /* the public access: the caller's map (0) */
     it.addr = addr;
     it.num_bytes = num_bytes;
     it.is_write = 1;
@@ -737,7 +745,7 @@ mcdsl_return_et mcdsrl_read_timestamped(uint32_t addr, uint32_t *value,
                              "mcdsrl_read_timestamped (ts_before)");
 
     memset(&it, 0, sizeof(it));
-    it.addr_map = TAS_AM0;
+    it.addr_map = 0;   /* the caller's address: the target map (0)! */
     it.addr = addr;
     it.num_bytes = 4;
     it.data = (uint8_t *)value;
@@ -871,7 +879,7 @@ static mcdsl_return_et dev_read(uint32_t addr, uint32_t *v)
     int rc;
 
     memset(&it, 0, sizeof(it));
-    it.addr_map = TAS_AM0;
+    it.addr_map = 1;   /* the EEC map (the MCDS registers!) */
     it.addr = addr;
     it.num_bytes = 4;
     it.data = (uint8_t *)v;
@@ -891,7 +899,7 @@ static mcdsl_return_et dev_write(uint32_t addr, uint32_t v)
     int rc;
 
     memset(&it, 0, sizeof(it));
-    it.addr_map = TAS_AM0;
+    it.addr_map = 1;   /* the EEC map (the MCDS registers!) */
     it.addr = addr;
     it.num_bytes = 4;
     it.is_write = 1;
@@ -912,7 +920,7 @@ static mcdsl_return_et dev_read_block(uint32_t addr, uint8_t *buf, uint32_t n)
     int rc;
 
     memset(&it, 0, sizeof(it));
-    it.addr_map = TAS_AM0;
+    it.addr_map = 1;   /* the EEC map (the MCDS registers!) */
     it.addr = addr;
     it.num_bytes = n;
     it.data = buf;
@@ -931,6 +939,75 @@ static void close_trace_file(void)
         fclose(g.trace_file);
         g.trace_file = NULL;
     }
+}
+
+/* the MCDS (EEC map 1) writers used by the configuration path - the
+ * reference sends the config pairs in the EEC map (captured in M23). */
+static mcdsl_return_et mcdsrl_write_emap(uint32_t addr, uint32_t value)
+{
+    tas_rw_item it;
+    uint8_t pe = 0;
+    int rc;
+
+    memset(&it, 0, sizeof(it));
+    it.addr_map = 1;
+    it.addr = addr;
+    it.num_bytes = 4;
+    it.is_write = 1;
+    it.data = (uint8_t *)&value;
+    rc = tas_rw_exec(&g.conn, &it, 1, g.con.pl0_max_num_rw, &pe);
+    if (rc == 0 && it.ok)
+        return MCDSL_RET_SUCCESS;
+    if (rc == 0) {
+        err_set(MCDSL_RET_DEVICE_DATA,
+                "ERROR: Write of addr %llX in addr_map %d failed",
+                (unsigned long long)addr, (int)1);
+        return MCDSL_RET_DEVICE_DATA;
+    }
+    return map_rw_result(rc, pe, "mcdsrl_write_emap");
+}
+
+static mcdsl_return_et mcdsrl_write_list_emap(const uint32_t *addr,
+                                              const uint32_t *value,
+                                              uint16_t num, uint16_t *num_ok)
+{
+    tas_rw_item items[MCDSRL_MAX_LIST_SIZE];
+    uint8_t pe = 0;
+    int rc;
+    uint32_t i;
+    uint16_t ok = 0;
+
+    if (addr == NULL || value == NULL || num == 0 ||
+        num > MCDSRL_MAX_LIST_SIZE)
+        return err_set(MCDSL_RET_FUNCTION_USED_WRONGLY,
+                       "invalid list parameters");
+    memset(items, 0, sizeof(items));
+    for (i = 0; i < num; i++) {
+        items[i].addr_map = 1;      /* the EEC map (the config path!) */
+        items[i].addr = addr[i];
+        items[i].num_bytes = 4;
+        items[i].is_write = 1;
+        items[i].data = (uint8_t *)&value[i];
+    }
+    rc = tas_rw_exec(&g.conn, items, num, g.con.pl0_max_num_rw, &pe);
+    for (i = 0; i < num; i++)
+        if (items[i].ok)
+            ok++;
+    if (num_ok != NULL)
+        *num_ok = ok;
+    if (rc == 0 && ok == num)
+        return MCDSL_RET_SUCCESS;
+    if (rc == 0) {
+        uint32_t fi = 0;
+
+        while (fi < num && items[fi].ok)
+            fi++;
+        err_set(MCDSL_RET_DEVICE_DATA,
+                "ERROR: Write of addr %llX in addr_map %d failed",
+                (unsigned long long)addr[fi], (int)1);
+        return MCDSL_RET_DEVICE_DATA;
+    }
+    return map_rw_result(rc, pe, "mcdsrl_write_list_emap");
 }
 
 /* the MCDS clock measurement (reference recorder_measure_mcds_freq: read
@@ -1031,7 +1108,9 @@ mcdsl_return_et mcdsrl_set_mcdsconfig(const mcdsl_mcdsc_st *mcdsc,
     g.cleanup_set = 1;
 
     /* derive the MCDS parameters (reference FUN_180005c40, class 1 path:
-     * the register windows and the FIFO base/top from the config) */
+     * the register windows and the FIFO base/top from the config).
+     * The config carries device-view addresses; translate to the EEC
+     * wire view (0xF90E6xxx -> 0xF00E6xxx, 0x9Fxxxxxx -> 0xAFxxxxxx). */
     g.fifo_base = 0;
     g.fifo_top = 0;
     g.trace_max_kb = 0;
@@ -1040,6 +1119,10 @@ mcdsl_return_et mcdsrl_set_mcdsconfig(const mcdsl_mcdsc_st *mcdsc,
         uint32_t a = g.mcdsc.d[i];
         uint32_t v = g.mcdsc.d[num + i];
 
+        if ((a & 0xFF000000u) == 0xF9000000u)
+            a -= 0x09000000u;
+        else if ((a & 0xFF000000u) == 0x9F000000u)
+            a += 0x10000000u;
         if ((a & 0xFFFFFF00u) == g.mcds_ctrl_base) {
             if ((a & 0xFFu) == 0x20u && v != 0)
                 g.mcds_present = 1;         /* the MCDS-ID marker */
@@ -1097,7 +1180,7 @@ mcdsl_return_et mcdsrl_open_trace_file(const mcd_char_t *trace_file_name)
 
 mcdsl_return_et mcdsrl_start_recording(const mcdsrl_trace_state_st *stop_at)
 {
-    uint32_t n, v = 0;
+    uint32_t n, v = 0, i;
     uint16_t nok = 0;
     mcdsl_return_et r;
 
@@ -1172,12 +1255,12 @@ mcdsl_return_et mcdsrl_start_recording(const mcdsrl_trace_state_st *stop_at)
     /* the 0x310/0x30F special sequence (the reference; the TC2xx ED
      * devices need the auxiliary clock ungate around the CPU start) */
     if (((g.device_id_short - 0x310u) & 0xFEFFu) == 0) {
-        dev_write(0xFA006000u, 0);
+        mcdsrl_write(0xFA006000u, 0);
         v = 0xEEEEEEEEu;
-        if (dev_read(0xFA006000u, &v) == MCDSL_RET_SUCCESS && v != 0) {
-            dev_write(0xF000047Cu, 0xC0u);
-            dev_write(0xFA006000u, 0);
-            dev_write(0xF000047Cu, 0x40u);
+        if (mcdsrl_read(0xFA006000u, &v) == MCDSL_RET_SUCCESS && v != 0) {
+            mcdsrl_write(0xF000047Cu, 0xC0u);
+            mcdsrl_write(0xFA006000u, 0);
+            mcdsrl_write(0xF000047Cu, 0x40u);
         }
     }
 
@@ -1188,21 +1271,67 @@ mcdsl_return_et mcdsrl_start_recording(const mcdsrl_trace_state_st *stop_at)
     }
 
     /* the config write: for the HAR variant the last pair is excluded and
-     * written separately (it starts the CPU0 / the trace) */
-    n = g.mcdsc.hdr.num_reg;
-    if (g.mcdsc.hdr.crsv == 2)
-        n -= 1;
-    if (n > 0) {
-        r = mcdsrl_write_list(g.mcdsc.d, &g.mcdsc.d[g.mcdsc.hdr.vsi],
-                              (uint16_t)n, &nok);
-        if (r != MCDSL_RET_SUCCESS)
-            return r;
+     * written separately (it starts the CPU0 / the trace).
+     * The configurator emits device-view addresses (0xF90E6xxx for the
+     * MCDS registers, 0x9Fxxxxxx for the EMEM); the reference recorder
+     * translates them to the EEC map-1 wire addresses (0xF00E6xxx /
+     * 0xAFxxxxxx - captured in M23).  The SoC/product pairs (map 0) and
+     * the MCDS pairs (map 1) are written as separate frames. */
+    {
+        uint32_t soc_a[MCDSL_MCDSC_MAX_NUM_REG];
+        uint32_t soc_v[MCDSL_MCDSC_MAX_NUM_REG];
+        uint32_t mcds_a[MCDSL_MCDSC_MAX_NUM_REG];
+        uint32_t mcds_v[MCDSL_MCDSC_MAX_NUM_REG];
+        uint32_t nsoc = 0, nmcds = 0;
+        uint32_t total = g.mcdsc.hdr.num_reg;
+        uint32_t lim = total;
+
+        if (g.mcdsc.hdr.crsv == 2)
+            lim -= 1;               /* the HAR last pair is separate */
+        for (i = 0; i < lim; i++) {
+            uint32_t a = g.mcdsc.d[i];
+            uint32_t v = g.mcdsc.d[g.mcdsc.hdr.vsi + i];
+
+            if ((a & 0xFF000000u) == 0xF9000000u) {
+                mcds_a[nmcds] = a - 0x09000000u;
+                mcds_v[nmcds] = v;
+                nmcds++;
+            } else if ((a & 0xFF000000u) == 0x9F000000u) {
+                mcds_a[nmcds] = a + 0x10000000u;
+                mcds_v[nmcds] = v;
+                nmcds++;
+            } else {
+                soc_a[nsoc] = a;
+                soc_v[nsoc] = v;
+                nsoc++;
+            }
+        }
+        if (nsoc > 0) {
+            r = mcdsrl_write_list(soc_a, soc_v, (uint16_t)nsoc, &nok);
+            if (r != MCDSL_RET_SUCCESS)
+                return r;
+        }
+        if (nmcds > 0) {
+            r = mcdsrl_write_list_emap(mcds_a, mcds_v, (uint16_t)nmcds,
+                                       &nok);
+            if (r != MCDSL_RET_SUCCESS)
+                return r;
+        }
     }
     if (g.mcdsc.hdr.crsv == 2 && g.mcdsc.hdr.num_reg > 0) {
         uint32_t last = g.mcdsc.hdr.num_reg - 1;
+        uint32_t la = g.mcdsc.d[last];
+        uint32_t lv = g.mcdsc.d[g.mcdsc.hdr.vsi + last];
 
-        r = mcdsrl_write(g.mcdsc.d[last],
-                         g.mcdsc.d[g.mcdsc.hdr.vsi + last]);
+        if ((la & 0xFF000000u) == 0xF9000000u)
+            la -= 0x09000000u;
+        else if ((la & 0xFF000000u) == 0x9F000000u)
+            la += 0x10000000u;
+        if ((la & 0xFF000000u) == 0xF0000000u &&
+            ((la & 0x00F00000u) == 0x00000000u))
+            r = mcdsrl_write(la, lv);           /* the SoC (map 0) */
+        else
+            r = mcdsrl_write_emap(la, lv);      /* the MCDS (map 1) */
         if (r != MCDSL_RET_SUCCESS)
             return r;
     }
@@ -1404,12 +1533,25 @@ mcdsl_return_et mcdsrl_stop_recording(mcdsrl_trace_state_st *trace_state)
         r = recstate_impl(&rs, trace_state, 1);
         if (r != MCDSL_RET_SUCCESS)
             return r;
-        /* the cleanup config sequence */
+        /* the cleanup config sequence (the same EEC-map translation as the
+         * start: device-view addresses -> the map-1 wire addresses) */
         if (g.cleanup_set && g.mcdsc_cleanup.hdr.num_reg > 0) {
-            r = mcdsrl_write_list(g.mcdsc_cleanup.d,
-                                  &g.mcdsc_cleanup.d[g.mcdsc_cleanup.hdr.vsi],
-                                  (uint16_t)g.mcdsc_cleanup.hdr.num_reg,
-                                  &nok);
+            uint32_t ca[MCDSL_MCDSC_MAX_NUM_REG];
+            uint32_t cv[MCDSL_MCDSC_MAX_NUM_REG];
+            uint32_t cn = g.mcdsc_cleanup.hdr.num_reg;
+            uint32_t ci;
+
+            for (ci = 0; ci < cn && ci < MCDSL_MCDSC_MAX_NUM_REG; ci++) {
+                uint32_t a = g.mcdsc_cleanup.d[ci];
+
+                if ((a & 0xFF000000u) == 0xF9000000u)
+                    a -= 0x09000000u;
+                else if ((a & 0xFF000000u) == 0x9F000000u)
+                    a += 0x10000000u;
+                ca[ci] = a;
+                cv[ci] = g.mcdsc_cleanup.d[g.mcdsc_cleanup.hdr.vsi + ci];
+            }
+            r = mcdsrl_write_list_emap(ca, cv, (uint16_t)cn, &nok);
             if (r != MCDSL_RET_SUCCESS)
                 return r;
         }

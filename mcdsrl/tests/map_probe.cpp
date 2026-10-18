@@ -154,15 +154,28 @@ int main(void)
     probe(&c, 0, 0x50100000u, con.pl0_max_num_rw);
     probe(&c, 0, 0x50000000u, con.pl0_max_num_rw);
 
-    /* the decisive test: the MCDS enable write (the first pair of the
-     * reference config: 0xF00E6000 <- 0x00010000) via the map-15 view
-     * (0x50006000), which is the working path for the timestamp counter */
-    printf("\n== MCDS enable write via map 15 (0x50006000 <- 0x10000) ==\n");
-    probe_wr32(&c, 15, 0x50006000u, 0x00010000u, con.pl0_max_num_rw);
-    probe(&c, 15, 0x50006000u, con.pl0_max_num_rw);
-    probe64(&c, 15, 0x50006000u, con.pl0_max_num_rw);
-    probe64(&c, 15, 0x50006034u, con.pl0_max_num_rw);
-    probe(&c, 1, 0xF00E6000u, con.pl0_max_num_rw);
+    /* the decisive test: is the EMEM (Emulation Memory - ED only!) really
+     * present? A real RAM accepts a pattern and reads it back; a PD (or a
+     * server emulation window) does not. */
+    printf("\n== EMEM presence test (ED vs PD) ==\n");
+    printf("-- window A: 0x50000000 (map 0) --\n");
+    probe(&c, 0, 0x50000000u, con.pl0_max_num_rw);
+    probe_wr32(&c, 0, 0x50000000u, 0x12345678u, con.pl0_max_num_rw);
+    probe(&c, 0, 0x50000000u, con.pl0_max_num_rw);
+    probe_wr32(&c, 0, 0x50000000u, 0x00000000u, con.pl0_max_num_rw);
+    probe(&c, 0, 0x50000000u, con.pl0_max_num_rw);
+    printf("-- window B: 0xAF000000 (the configurator EMEM base!) --\n");
+    probe(&c, 0, 0xAF000000u, con.pl0_max_num_rw);
+    probe_wr32(&c, 0, 0xAF000000u, 0x12345678u, con.pl0_max_num_rw);
+    probe(&c, 0, 0xAF000000u, con.pl0_max_num_rw);
+    probe_wr32(&c, 0, 0xAF000000u, 0x00000000u, con.pl0_max_num_rw);
+    probe(&c, 0, 0xAF000000u, con.pl0_max_num_rw);
+    printf("-- window C: 0x50010000 (inside the 1MB EMEM) --\n");
+    probe(&c, 0, 0x50010000u, con.pl0_max_num_rw);
+    probe_wr32(&c, 0, 0x50010000u, 0x12345678u, con.pl0_max_num_rw);
+    probe(&c, 0, 0x50010000u, con.pl0_max_num_rw);
+    probe_wr32(&c, 0, 0x50010000u, 0x00000000u, con.pl0_max_num_rw);
+    probe(&c, 0, 0x50010000u, con.pl0_max_num_rw);
 
     /* restore the device state (the MCDS configuration is volatile and is
      * cleared by the reset) */
@@ -203,6 +216,21 @@ int main(void)
     probe(&c, 0, 0x50000000u, con.pl0_max_num_rw);
     probe(&c, 0, 0xAF000000u, con.pl0_max_num_rw);
     probe(&c, 0, 0x9F000000u, con.pl0_max_num_rw);
+
+    /* the system timer candidates (the run_until time source!) */
+    printf("\n== system timer (STM) candidates ==\n");
+    probe(&c, 0, 0xF0000000u, con.pl0_max_num_rw);
+    probe(&c, 0, 0xF0000010u, con.pl0_max_num_rw);
+    probe(&c, 0, 0xF0000110u, con.pl0_max_num_rw);
+    {
+        int k;
+
+        printf("-- STM0 5 reads with 200 ms gaps --\n");
+        for (k = 0; k < 5; k++) {
+            probe(&c, 0, 0xF0000010u, con.pl0_max_num_rw);
+            Sleep(200);
+        }
+    }
 
     tas_disconnect(&c);
     return 0;

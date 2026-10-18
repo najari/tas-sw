@@ -161,6 +161,15 @@ int main(int argc, char **argv)
             CHK(r == MCDSL_RET_SUCCESS, "mcdsrl_set_mcdsconfig");
             if (r != MCDSL_RET_SUCCESS)
                 printf("       error: %s\n", f_err && f_err() ? f_err() : "(none)");
+            {
+                uint32_t pk;
+
+                printf("       pairs(all %u):\n", (unsigned)mcdsc->hdr.num_reg);
+                for (pk = 0; pk < mcdsc->hdr.num_reg; pk++)
+                    printf("         [%2u] 0x%08X = 0x%08X\n", (unsigned)pk,
+                           (unsigned)mcdsc->d[pk],
+                           (unsigned)mcdsc->d[mcdsc->hdr.vsi + pk]);
+            }
 
             r = f_start(NULL);
             CHK(r == MCDSL_RET_SUCCESS, "mcdsrl_start_recording");
