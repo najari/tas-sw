@@ -4,12 +4,10 @@ MCD(Multi-Core Debug) API v1.1 **"SPRINT Release"** 구현 DLL 프로토타입.
 백엔드는 [TAS](https://github.com/najari/tas-sw) 서버(TCP 24817) — 즉, `mcdxdas.dll`(DAS 백엔드)의
 자매품으로 "MCD API를 TAS로" 제공하는 실험 구현입니다.
 
-- 상태: **M17 완료 (2026-10-18)** — M12까지 원본 `mcd_basic_client.exe`에 drop-in(`mcdxdas.dll` 자리)으로
-  **GUI 전 구간 검증 + 교차 캘리브레이션 완료**(열거·열기 M1~M3, State/IP·DBGSR M4~M5, 오류 표시 M6,
-  reg_map M7, mem_spaces/스텁 M8, 열거 교차 M9, 리셋 클래스 M10, Run 실관찰 M11, GUI Write M12)에 이어
-  **M16: run/stop** · **M17: reset** 실구현·라이브 검증(아래 M16/M17 섹션).
-  (M2 애태치: 초기 DEVICE_CONNECT 실패는 USB 허브 경유 문제 — 본체 직결로 해결)
-- 원칙: **읽기 전용 기본** — run/stop/reset은 M16/M17에서 구현(사용 승인 하 상태 변경), Step/트리거 생성/CHL은 미구현(스텁)
+- 상태: **M18 완료 (2026-10-18)** — M12까지 원본 `mcd_basic_client.exe`에 drop-in(`mcdxdas.dll` 자리)으로
+  **GUI 전 구간 검증 + 교차 캘리브레이션 완료**에 이어 **M16 run/stop · M17 reset · M18 트리거(브레이크포인트)**
+  실구현·라이브 검증(아래 M16/M17/M18 섹션). (M2 애태치: 초기 DEVICE_CONNECT 실패는 USB 허브 경유 문제 — 본체 직결로 해결)
+- 원칙: **읽기 전용 기본** — run/stop/reset/트리거는 M16~M18에서 구현(사용 승인 하 상태 변경), Step/CHL은 미구현(스텁)
 - 소스 언어: C++ (SPRINT `mcd_api.h` 헤더가 `extern "C"` 비가드 선언이라 C에서는 컴파일 불가)
 
 ## 구성
@@ -61,11 +59,11 @@ build\Release\tas_probe.exe [host] [port]
 `mcd_open_core_f` `mcd_close_core_f` `mcd_qry_mem_spaces_f` `mcd_execute_txlist_f`
 `mcd_qry_state_f` `mcd_qry_max_payload_size_f`
 
-나머지 15개는 `MCD_RET_ACT_HANDLE_ERROR` + `MCD_ERR_FN_UNIMPLEMENTED` + 함수명 메시지를 반환합니다
-(`mcd_qry_error_info_f`로 조회 가능): 트리거 4종(create/qry/remove/qry_state),
-`run_until`·`step`·`execute_command`, CHL 5종(open/send/receive/reset/close),
-`set_trace_state`·`read_trace`·`qry_input_handle`. (run/stop은 **M16**, reset은 **M17**에서 실구현 —
-`remove/activate_trig_set`은 M16b에서 성공 no-op — 아래 M16/M17 섹션)
+나머지 11개는 `MCD_RET_ACT_HANDLE_ERROR` + `MCD_ERR_FN_UNIMPLEMENTED` + 함수명 메시지를 반환합니다
+(`mcd_qry_error_info_f`로 조회 가능): `run_until`·`step`·`execute_command`,
+CHL 5종(open/send/receive/reset/close), `set_trace_state`·`read_trace`·`qry_input_handle`
+— 이 중 CHL 5종+`qry_input_handle`은 **원본 mcdxdas도 동일 스텁**(공용 스텁 0x1D30)이라 파리티.
+(run/stop은 **M16**, reset은 **M17**, 트리거는 **M18**에서 실구현 — 아래 섹션)
 
 ## M16 구현 — run/stop (2026-10-18)
 
@@ -118,6 +116,26 @@ build\Release\tas_probe.exe [host] [port]
     DATA_SHIFT/CLOCK_CYCLES·리셋 핀·주파수만), DC 옵션(RESET/HALT/UNLOCK)에 step 없음, 서버 문자열에 step 없음.
   - 구현 경로: **DAP/Cerberus 프로토콜을 AM15 raw JTAG 위에 구현**하는 별도 서브프로젝트 필요.
 - `mcd_run_until_f`: 대상 시간 소스(`qry_current_time`) 미확보 — 동일 계열 후속.
+
+## M18 구현 — 트리거(브레이크포인트) (2026-10-18)
+
+- `mcd_create_trig_f`/`qry_trig_f`/`remove_trig_f`/`qry_trig_state_f` 실구현: **OCDS 트리거 유닛 TR0..TR7**
+  직접 프로그래밍(CPUx CSFR: `TRxEVT 0xF000+8n`·`TRxADR 0xF004+8n`·`TRIG_ACC 0xFD30`)
+  - TRxEVT = `BOD|BBM|EVTA=Halt`(0x1A) + `TYP=PC`(0x1000)/`ALD`(read, 0x10000000)/`AST`(write, 0x08000000)
+    + 범위 시 `RNG`(0x2000) — TC1.6 UM §12.9 필드 레이아웃 검증
+    (참고: CCL 상수 0x1011은 EVTA=001 "관찰 전용" — 브레이크포인트용으로 정정)
+  - 단일 주소=임의 유닛, **범위=짝수 유닛+상위 이웃(TR1ADR=끝주소)** — 총 8유닛
+  - `qry_trig_state`: TRIG_ACC 판독(읽으면 클리어) → 모델 래치 → captured 보고
+  - `remove_trig_set`: 하드웨어+모델 실제 제거 / `activate_trig_set`: no-op(생성 시 즉시 armed)
+  - `qry_trig_info`: IP/READ/WRITE/RW·DBG_DEBUG/GLOBAL·8유닛 광고 / `qry_trig_set(_state)`: 실데이터
+- 라이브 검증(smoke `--trig`): 브레이크포인트 @0x8003A160 → **PC=0x8003A160에서 정지·EVTSRC=16(TR0EVT)** ·
+  captured=1 · 제거 후 세트 비움 · 실패 0 (증거: `smoke_trig_run.txt`)
+- **GUI 검증**(원본 클라이언트): IP Trigger 체크+주소 입력 → Run →
+  `remove_trig_set → create_trig(TR0, evt 0x101A) → activate → run` → **State Debug·IP 0x8003A160·"ACTIVE"** ·
+  체크 해제 후 Run → `remove_trig_set(1 cleared)` → 정상 실행 · Stop → Debug
+  (화면: `gui_test\m18_*.png` · 로그: `drop_in\client_stderr37.log`)
+- 부수 개선: run 검증에서 **트리거 히트 구분**(브레이크포인트 레이스 — 정지가 트리거 때문이면 성공+DEBUG)
+- 배포: `drop_in\mcdxdas.dll` = SHA256 `62C5E0EC2464FD11…` (M18)
 
 ### 세션 / 애태치 (`mcd_open_core_f`)
 

@@ -27,6 +27,10 @@ typedef void           (*pfn_qry_error)(const mcd_core_st *, mcd_error_info_st *
 typedef mcd_return_et (*pfn_run)(const mcd_core_st *, mcd_bool_t);
 typedef mcd_return_et (*pfn_stop)(const mcd_core_st *, mcd_bool_t);
 typedef mcd_return_et (*pfn_rst)(const mcd_core_st *, uint32_t, mcd_bool_t);
+typedef mcd_return_et (*pfn_createtrig)(const mcd_core_st *, void *, uint32_t *);
+typedef mcd_return_et (*pfn_qrytrigset)(const mcd_core_st *, uint32_t, uint32_t *, uint32_t *);
+typedef mcd_return_et (*pfn_qrytrigstate)(const mcd_core_st *, uint32_t, mcd_trig_state_st *);
+typedef mcd_return_et (*pfn_removetrig)(const mcd_core_st *, uint32_t);
 typedef mcd_return_et (*pfn_open_core)(const mcd_core_con_info_st *, mcd_core_st **);
 typedef mcd_return_et (*pfn_close_core)(const mcd_core_st *);
 typedef mcd_return_et (*pfn_qry_mem_spaces)(const mcd_core_st *, uint32_t, uint32_t *, mcd_memspace_st *);
@@ -82,6 +86,7 @@ int main(int argc, char **argv)
     int attach = 0;
     int runstop = 0;
     int rst = 0;
+    int trig = 0;
     mcd_return_et r;
     uint32_t n;
     uint32_t i;
@@ -93,13 +98,16 @@ int main(int argc, char **argv)
             runstop = 1;
         if (strcmp(argv[i], "--rst") == 0)
             rst = 1;
+        if (strcmp(argv[i], "--trig") == 0)
+            trig = 1;
     }
 
     printf("== mcd_tas smoke test ==\n");
-    printf("dll: %s\ncfg: %s\nmode: %s%s%s\n\n", dll, cfg ? cfg : "(default)",
+    printf("dll: %s\ncfg: %s\nmode: %s%s%s%s\n\n", dll, cfg ? cfg : "(default)",
            attach ? "with core attach (--attach)" : "read-only",
            runstop ? " + run/stop (--runstop)" : "",
-           rst ? " + reset (--rst)" : "");
+           rst ? " + reset (--rst)" : "",
+           trig ? " + trigger (--trig)" : "");
 
     h = LoadLibraryA(dll);
     if (h == NULL) {
@@ -119,6 +127,10 @@ int main(int argc, char **argv)
     LOADFN(h, pfn_run,          f_run,     "mcd_run_f");
     LOADFN(h, pfn_stop,         f_stop,    "mcd_stop_f");
     LOADFN(h, pfn_rst,          f_rst,     "mcd_rst_f");
+    LOADFN(h, pfn_createtrig,   f_createtrig,   "mcd_create_trig_f");
+    LOADFN(h, pfn_qrytrigset,   f_qrytrigset,   "mcd_qry_trig_set_f");
+    LOADFN(h, pfn_qrytrigstate, f_qrytrigstate, "mcd_qry_trig_state_f");
+    LOADFN(h, pfn_removetrig,   f_removetrig,   "mcd_remove_trig_f");
     LOADFN(h, pfn_open_core,    f_opencore,   "mcd_open_core_f");
     LOADFN(h, pfn_close_core,   f_closecore,  "mcd_close_core_f");
     LOADFN(h, pfn_qry_mem_spaces, f_memspaces, "mcd_qry_mem_spaces_f");
@@ -478,6 +490,94 @@ int main(int argc, char **argv)
                         printf("       [rst] restored: RUNNING (as found)\n");
                     } else {
                         printf("       [rst] restored: DEBUG (as found)\n");
+                    }
+                }
+
+                /* M18: IP trigger (breakpoint) verification (--trig). */
+                if (trig) {
+                    mcd_trig_simple_core_st tdef;
+                    uint32_t tid = 0, dbgsr2 = 0, pc2 = 0;
+                    uint32_t ids[8];
+                    uint32_t nids;
+                    mcd_trig_state_st tst;
+                    mcd_core_state_st st3;
+                    uint32_t state_before = MCD_CORE_STATE_UNKNOWN;
+                    int hit = 0, k;
+
+                    memset(&st3, 0, sizeof(st3));
+                    r = f_state(core, &st3);
+                    state_before = st3.state;
+                    printf("       [trig] before: state 0x%x\n",
+                           (unsigned)st3.state);
+
+                    /* breakpoint at a PC inside the firmware's running loop */
+                    memset(&tdef, 0, sizeof(tdef));
+                    tdef.struct_size = sizeof(tdef);
+                    tdef.type = MCD_TRIG_TYPE_IP;
+                    tdef.option = MCD_TRIG_OPT_DEFAULT;
+                    tdef.action = MCD_TRIG_ACTION_DBG_DEBUG;
+                    tdef.addr_start.mem_space_id = 1;
+                    tdef.addr_start.address = 0x8003A160ull;
+                    tdef.addr_range = 0;
+
+                    r = f_createtrig(core, &tdef, &tid);
+                    CHK(r == MCD_RET_ACT_NONE && tid != 0,
+                        "mcd_create_trig_f (IP breakpoint @0x8003A160)");
+                    printf("       [trig] created id %u\n", (unsigned)tid);
+
+                    nids = 8;
+                    r = f_qrytrigset(core, 0, &nids, ids);
+                    CHK(r == MCD_RET_ACT_NONE && nids == 1 && ids[0] == tid,
+                        "mcd_qry_trig_set_f lists the trigger");
+
+                    if (state_before == MCD_CORE_STATE_RUNNING) {
+                        printf("       [trig] core already running; the armed "
+                               "trigger halts it by itself\n");
+                    } else {
+                        r = f_run(core, FALSE);
+                        if (r != MCD_RET_ACT_NONE)
+                            printf("       [trig] run returned %d (trigger may "
+                                   "have halted the core during the run "
+                                   "verification)\n", (int)r);
+                    }
+
+                    /* poll up to ~2 s for the breakpoint halt */
+                    for (k = 0; k < 40; k++) {
+                        Sleep(50);
+                        read_word32(f_txlist, core, 0xF881FD00ull, &dbgsr2);
+                        if (((dbgsr2 >> 1) & 3u) == 1u) {
+                            hit = 1;
+                            break;
+                        }
+                    }
+                    read_word32(f_txlist, core, 0xF881FE08ull, &pc2);
+                    printf("       [trig] after run: DBGSR=0x%08X PC=0x%08X "
+                           "(EVTSRC=%u)\n", (unsigned)dbgsr2, (unsigned)pc2,
+                           (unsigned)((dbgsr2 >> 8) & 0x1Fu));
+                    CHK(hit, "core halted on the IP trigger");
+                    CHK(pc2 == 0x8003A160u,
+                        "halted PC equals the breakpoint address");
+
+                    memset(&tst, 0, sizeof(tst));
+                    r = f_qrytrigstate(core, tid, &tst);
+                    CHK(r == MCD_RET_ACT_NONE && tst.captured,
+                        "mcd_qry_trig_state_f reports captured");
+
+                    r = f_removetrig(core, tid);
+                    CHK(r == MCD_RET_ACT_NONE, "mcd_remove_trig_f");
+                    nids = 8;
+                    r = f_qrytrigset(core, 0, &nids, ids);
+                    CHK(r == MCD_RET_ACT_NONE && nids == 0,
+                        "trigger set empty after removal");
+
+                    /* restore the state found at entry */
+                    if (state_before == MCD_CORE_STATE_RUNNING) {
+                        printf("       [trig] restored: RUNNING (as found)\n");
+                    } else {
+                        r = f_stop(core, FALSE);
+                        CHK(r == MCD_RET_ACT_NONE,
+                            "restore DEBUG (state found at entry)");
+                        printf("       [trig] restored: DEBUG (as found)\n");
                     }
                 }
 

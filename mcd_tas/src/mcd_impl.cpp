@@ -48,6 +48,40 @@
 #define MCD_TAS_MAX_PAYLOAD     0x10000u
 
 /* ------------------------------------------------------------------ */
+/* M18: OCDS trigger unit model (TR0..TR7 via the CPUx CSFR window)    */
+/* ------------------------------------------------------------------ */
+
+/* CPUx CSFR base (TC27x UM Table 3-3): CPU0 0xF8810000, +0x20000/core. */
+#define MCD_TAS_CSFR_BASE_CPU0  0xF8810000u
+#define MCD_TAS_CSFR_STRIDE     0x20000u
+/* Register offsets inside the CSFR window (TC1.6 UM sec.12.8 Table 12-1):
+ * TR0EVT = 0xF000 + 8*n, TR0ADR = 0xF004 + 8*n, TRIG_ACC = 0xFD30. */
+#define MCD_TAS_TRIG_EVT_OFF    0xF000u
+#define MCD_TAS_TRIG_ADR_OFF    0xF004u
+#define MCD_TAS_TRIG_ACC_OFF    0xFD30u
+#define MCD_TAS_TRIG_UNITS      8
+/* TRxEVT field values (TC1.6 UM sec.12.9 TRxEVT): BOD=1 (no BRKOUT pulse)
+ * | BBM=1 (break before the instruction executes) | EVTA=010b (Halt). */
+#define MCD_TAS_TRIG_EVT_HALT   0x0000001Au
+#define MCD_TAS_TRIG_EVT_NONE   0x00000011u  /* BOD | EVTA=001: accumulate only */
+#define MCD_TAS_TRIG_EVT_PC     0x00001000u  /* TYP=1: PC compare          */
+#define MCD_TAS_TRIG_EVT_ALD    0x10000000u  /* Address Load (read)        */
+#define MCD_TAS_TRIG_EVT_AST    0x08000000u  /* Address Store (write)      */
+#define MCD_TAS_TRIG_EVT_RNG    0x00002000u  /* RNG=1: range compare       */
+
+typedef struct {
+    int      used;
+    uint32_t id;          /* MCD trigger id (>= 1)                     */
+    uint8_t  unit;        /* TRx index (even when is_range)            */
+    uint8_t  is_range;    /* 1 = uses unit + unit+1 (TR1ADR = end)     */
+    uint32_t evt;         /* programmed TRxEVT value                   */
+    uint32_t addr0, addr1;
+    int      captured;    /* latched from TRIG_ACC (its read clears)   */
+    uint32_t desc_len;    /* stored request bytes (for mcd_qry_trig_f) */
+    uint8_t  desc[64];
+} mcd_trig_slot_t;
+
+/* ------------------------------------------------------------------ */
 /* context                                                             */
 /* ------------------------------------------------------------------ */
 
@@ -66,6 +100,8 @@ typedef struct {
     uint32_t             st_dbgsr;           /* raw DBGSR value           */
     mcd_core_state_et    st_state;           /* state derived from DBGSR  */
     mcd_core_event_et    st_event;           /* one-shot event for next qry_state (M16) */
+    mcd_trig_slot_t      trigs[MCD_TAS_TRIG_UNITS]; /* M18 trigger model */
+    uint32_t             next_trig_id;       /* M18: next trigger id (>= 1) */
     mcd_core_st          core_obj;
     mcd_core_con_info_st core_ci;
 } mcd_core_slot_t;
@@ -967,6 +1003,8 @@ static mcd_error_code_et open_tas_session(mcd_core_slot_t *cs,
     cs->st_dbgsr = 0;
     cs->st_state = MCD_CORE_STATE_UNKNOWN;
     cs->st_event = MCD_CORE_EVENT_NONE;
+    memset(cs->trigs, 0, sizeof(cs->trigs));
+    cs->next_trig_id = 0;
     cs->attached = 1;
     dbg("mcd_tas: session attached to '%s' (device 0x%08X, feat 0x%04x, max_rw %u)",
         g.targets[tgt].identifier, (unsigned)cs->con.device_type,
@@ -1569,6 +1607,14 @@ mcd_return_et mcd_qry_reg_compound_f(const mcd_core_st *core,
     return r;
 }
 
+/* M18: trigger unit helpers (defined next to the run-control helpers
+ * further below; forward declarations for the trigger API section). */
+static uint32_t trig_csfr_base(const mcd_core_slot_t *cs);
+static mcd_return_et csfr_write(mcd_core_slot_t *cs, uint32_t off,
+                                uint32_t value, const char *fn);
+static mcd_return_et csfr_read(mcd_core_slot_t *cs, uint32_t off,
+                               uint32_t *value, const char *fn);
+
 mcd_return_et mcd_qry_trig_info_f(const mcd_core_st *core,
                                   mcd_trig_info_st *trig_info)
 {
@@ -1619,35 +1665,319 @@ mcd_return_et mcd_qry_ctrigs_f(const mcd_core_st *core, uint32_t start_index,
 mcd_return_et mcd_create_trig_f(const mcd_core_st *core, void *trig,
                                 uint32_t *trig_id)
 {
-    (void)core; (void)trig; (void)trig_id;
-    STUB_ENTER("mcd_create_trig_f")
+    mcd_return_et r = MCD_RET_ACT_NONE;
+    mcd_core_slot_t *cs;
+
+    mcd_lock();
+    err_clear();
+
+    cs = core_slot_from(core);
+    if (cs == NULL) {
+        r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
+                    "mcd_create_trig_f: unknown core handle");
+    } else if (!cs->attached) {
+        r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_CONNECTION,
+                    "mcd_create_trig_f: no TAS device session");
+    } else if (trig == NULL || trig_id == NULL) {
+        r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
+                    "mcd_create_trig_f: NULL trig/trig_id");
+    } else {
+        const mcd_trig_simple_core_st *ts =
+            (const mcd_trig_simple_core_st *)trig;
+        uint32_t evt = MCD_TAS_TRIG_EVT_HALT;
+        uint32_t unit = 0xFFFFFFFFu;
+        uint32_t i;
+        uint64_t start = 0, end = 0;
+        int is_range = 0;
+
+        *trig_id = 0;
+
+        if (ts->struct_size != sizeof(mcd_trig_simple_core_st)) {
+            r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_TRIG_CREATE,
+                        "mcd_create_trig_f: unsupported trigger struct "
+                        "size %u (simple struct is %u)",
+                        (unsigned)ts->struct_size,
+                        (unsigned)sizeof(mcd_trig_simple_core_st));
+        } else {
+            switch (ts->type) {
+            case MCD_TRIG_TYPE_IP:
+                evt |= MCD_TAS_TRIG_EVT_PC;
+                break;
+            case MCD_TRIG_TYPE_READ:
+                evt |= MCD_TAS_TRIG_EVT_ALD;
+                break;
+            case MCD_TRIG_TYPE_WRITE:
+                evt |= MCD_TAS_TRIG_EVT_AST;
+                break;
+            case MCD_TRIG_TYPE_RW:
+                evt |= MCD_TAS_TRIG_EVT_ALD | MCD_TAS_TRIG_EVT_AST;
+                break;
+            default:
+                r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_TRIG_CREATE,
+                            "mcd_create_trig_f: trigger type 0x%X not "
+                            "supported", (unsigned)ts->type);
+                break;
+            }
+        }
+
+        if (r == MCD_RET_ACT_NONE) {
+            if (ts->action == MCD_TRIG_ACTION_DBG_DEBUG ||
+                ts->action == MCD_TRIG_ACTION_DBG_GLOBAL) {
+                /* halt (EVT base already carries BOD|BBM|EVTA=Halt) */
+            } else if (ts->action == MCD_TRIG_ACTION_DEFAULT) {
+                /* observe only: accumulate in TRIG_ACC, take no action */
+                evt = (evt & ~0x7u) | 0x1u;
+            } else {
+                r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_TRIG_CREATE,
+                            "mcd_create_trig_f: trigger action 0x%X not "
+                            "supported", (unsigned)ts->action);
+            }
+        }
+
+        if (r == MCD_RET_ACT_NONE) {
+            start = ts->addr_start.address;
+            if (start > 0xFFFFFFFFull) {
+                r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_TRIG_CREATE,
+                            "mcd_create_trig_f: address 0x%llX out of the "
+                            "32-bit trigger compare range",
+                            (unsigned long long)start);
+            } else if (ts->addr_range != 0) {
+                end = start + ts->addr_range - 1u;
+                if (end > 0xFFFFFFFFull) {
+                    r = err_set(MCD_RET_ACT_HANDLE_ERROR,
+                                MCD_ERR_TRIG_CREATE,
+                                "mcd_create_trig_f: range end 0x%llX out of "
+                                "the 32-bit trigger compare range",
+                                (unsigned long long)end);
+                } else {
+                    is_range = 1;
+                    evt |= MCD_TAS_TRIG_EVT_RNG;
+                }
+            }
+        }
+
+        if (r == MCD_RET_ACT_NONE) {
+            if (is_range) {
+                /* an even unit plus its upper neighbour (TR1ADR = end) */
+                for (i = 0; i + 1 < MCD_TAS_TRIG_UNITS; i += 2) {
+                    if (!cs->trigs[i].used && !cs->trigs[i + 1].used) {
+                        unit = i;
+                        break;
+                    }
+                }
+            } else {
+                for (i = 0; i < MCD_TAS_TRIG_UNITS; i++) {
+                    if (!cs->trigs[i].used) {
+                        unit = i;
+                        break;
+                    }
+                }
+            }
+            if (unit == 0xFFFFFFFFu)
+                r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_TRIG_CREATE,
+                            "mcd_create_trig_f: no free trigger unit");
+        }
+
+        if (r == MCD_RET_ACT_NONE) {
+            uint32_t evt_off = MCD_TAS_TRIG_EVT_OFF + 8u * unit;
+
+            r = csfr_write(cs, evt_off, evt, "mcd_create_trig_f");
+            if (r == MCD_RET_ACT_NONE)
+                r = csfr_write(cs, evt_off + 4u, (uint32_t)start,
+                               "mcd_create_trig_f");
+            if (r == MCD_RET_ACT_NONE && is_range)
+                r = csfr_write(cs, evt_off + 8u + 4u, (uint32_t)end,
+                               "mcd_create_trig_f");
+        }
+
+        if (r == MCD_RET_ACT_NONE) {
+            mcd_trig_slot_t *slot = &cs->trigs[unit];
+            uint32_t dlen = ts->struct_size;
+
+            memset(slot, 0, sizeof(*slot));
+            slot->used = 1;
+            slot->id = ++cs->next_trig_id;
+            slot->unit = (uint8_t)unit;
+            slot->is_range = (uint8_t)is_range;
+            slot->evt = evt;
+            slot->addr0 = (uint32_t)start;
+            slot->addr1 = (uint32_t)end;
+            if (dlen > sizeof(slot->desc))
+                dlen = sizeof(slot->desc);
+            memcpy(slot->desc, trig, dlen);
+            slot->desc_len = dlen;
+            *trig_id = slot->id;
+            if (is_range)
+                dbg("mcd_tas: create_trig: id %u TR%u+TR%u range evt 0x%08X "
+                    "0x%08X..0x%08X", (unsigned)slot->id, (unsigned)unit,
+                    (unsigned)(unit + 1), (unsigned)evt, (unsigned)start,
+                    (unsigned)end);
+            else
+                dbg("mcd_tas: create_trig: id %u TR%u evt 0x%08X addr 0x%08X",
+                    (unsigned)slot->id, (unsigned)unit, (unsigned)evt,
+                    (unsigned)start);
+        }
+    }
+    mcd_unlock();
+    return r;
 }
 
 mcd_return_et mcd_qry_trig_f(const mcd_core_st *core, uint32_t trig_id,
                              uint32_t max_trig_size, void *trig)
 {
-    (void)core; (void)trig_id; (void)max_trig_size; (void)trig;
-    STUB_ENTER("mcd_qry_trig_f")
+    mcd_return_et r = MCD_RET_ACT_NONE;
+    mcd_core_slot_t *cs;
+    mcd_trig_slot_t *slot = NULL;
+    uint32_t i;
+
+    mcd_lock();
+    err_clear();
+
+    cs = core_slot_from(core);
+    if (cs == NULL) {
+        r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
+                    "mcd_qry_trig_f: unknown core handle");
+    } else if (trig == NULL) {
+        r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
+                    "mcd_qry_trig_f: NULL trig");
+    } else {
+        for (i = 0; i < MCD_TAS_TRIG_UNITS; i++) {
+            if (cs->trigs[i].used && cs->trigs[i].id == trig_id) {
+                slot = &cs->trigs[i];
+                break;
+            }
+        }
+        if (slot == NULL) {
+            r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
+                        "mcd_qry_trig_f: trigger id %u does not exist",
+                        (unsigned)trig_id);
+        } else if (max_trig_size < slot->desc_len) {
+            r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
+                        "mcd_qry_trig_f: buffer %u smaller than trigger "
+                        "description %u", (unsigned)max_trig_size,
+                        (unsigned)slot->desc_len);
+        } else {
+            memcpy(trig, slot->desc, slot->desc_len);
+            dbg("mcd_tas: CALL qry_trig id %u (%u bytes)",
+                (unsigned)trig_id, (unsigned)slot->desc_len);
+        }
+    }
+    mcd_unlock();
+    return r;
 }
 
 mcd_return_et mcd_remove_trig_f(const mcd_core_st *core, uint32_t trig_id)
 {
-    (void)core; (void)trig_id;
-    STUB_ENTER("mcd_remove_trig_f")
+    mcd_return_et r = MCD_RET_ACT_NONE;
+    mcd_core_slot_t *cs;
+    mcd_trig_slot_t *slot = NULL;
+    uint32_t i;
+
+    mcd_lock();
+    err_clear();
+
+    cs = core_slot_from(core);
+    if (cs == NULL) {
+        r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
+                    "mcd_remove_trig_f: unknown core handle");
+    } else {
+        for (i = 0; i < MCD_TAS_TRIG_UNITS; i++) {
+            if (cs->trigs[i].used && cs->trigs[i].id == trig_id) {
+                slot = &cs->trigs[i];
+                break;
+            }
+        }
+        if (slot == NULL) {
+            r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
+                        "mcd_remove_trig_f: trigger id %u does not exist",
+                        (unsigned)trig_id);
+        } else {
+            uint32_t evt_off = MCD_TAS_TRIG_EVT_OFF + 8u * slot->unit;
+
+            r = csfr_write(cs, evt_off, 0, "mcd_remove_trig_f");
+            if (r == MCD_RET_ACT_NONE)
+                r = csfr_write(cs, evt_off + 4u, 0, "mcd_remove_trig_f");
+            if (r == MCD_RET_ACT_NONE && slot->is_range) {
+                r = csfr_write(cs, evt_off + 8u, 0, "mcd_remove_trig_f");
+                if (r == MCD_RET_ACT_NONE)
+                    r = csfr_write(cs, evt_off + 8u + 4u, 0,
+                                   "mcd_remove_trig_f");
+            }
+            if (r == MCD_RET_ACT_NONE) {
+                dbg("mcd_tas: remove_trig: id %u (TR%u%s)",
+                    (unsigned)trig_id, (unsigned)slot->unit,
+                    slot->is_range ? "+TR(upper)" : "");
+                slot->used = 0;
+            }
+        }
+    }
+    mcd_unlock();
+    return r;
 }
 
 mcd_return_et mcd_qry_trig_state_f(const mcd_core_st *core, uint32_t trig_id,
                                    mcd_trig_state_st *trig_state)
 {
-    (void)core; (void)trig_id; (void)trig_state;
-    STUB_ENTER("mcd_qry_trig_state_f")
+    mcd_return_et r = MCD_RET_ACT_NONE;
+    mcd_core_slot_t *cs;
+    mcd_trig_slot_t *slot = NULL;
+    uint32_t i;
+
+    mcd_lock();
+    err_clear();
+
+    cs = core_slot_from(core);
+    if (cs == NULL) {
+        r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
+                    "mcd_qry_trig_state_f: unknown core handle");
+    } else if (trig_state == NULL) {
+        r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
+                    "mcd_qry_trig_state_f: NULL trig_state");
+    } else {
+        for (i = 0; i < MCD_TAS_TRIG_UNITS; i++) {
+            if (cs->trigs[i].used && cs->trigs[i].id == trig_id) {
+                slot = &cs->trigs[i];
+                break;
+            }
+        }
+        if (slot == NULL) {
+            r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
+                        "mcd_qry_trig_state_f: trigger id %u does not exist",
+                        (unsigned)trig_id);
+        } else {
+            uint32_t acc = 0;
+
+            /* TRIG_ACC latches "trigger n activated" (range: lower unit);
+             * any read clears it, so latch into the model slots. */
+            r = csfr_read(cs, MCD_TAS_TRIG_ACC_OFF, &acc,
+                          "mcd_qry_trig_state_f");
+            if (r == MCD_RET_ACT_NONE) {
+                for (i = 0; i < MCD_TAS_TRIG_UNITS; i++) {
+                    if (cs->trigs[i].used &&
+                        (acc & (1u << cs->trigs[i].unit)) != 0)
+                        cs->trigs[i].captured = 1;
+                }
+                memset(trig_state, 0, sizeof(*trig_state));
+                trig_state->active = slot->used ? TRUE : FALSE;
+                trig_state->captured = slot->captured ? TRUE : FALSE;
+                trig_state->captured_valid = TRUE;
+                trig_state->count_value = 0;
+                trig_state->count_valid = FALSE;
+                dbg("mcd_tas: CALL qry_trig_state id %u -> active %u "
+                    "captured %u (trig_acc 0x%08X)",
+                    (unsigned)trig_id, (unsigned)trig_state->active,
+                    (unsigned)trig_state->captured, (unsigned)acc);
+            }
+        }
+    }
+    mcd_unlock();
+    return r;
 }
 
-/* M16b: no-op success.  The prototype cannot create triggers
- * (mcd_create_trig_f reports unimplemented), so the trigger set is always
- * empty; clearing/activating it is a successful no-op.  The reference
- * client's Run sequence calls mcd_remove_trig_set_f before mcd_run_f
- * (observed in the GUI: Run was blocked while this was a stub). */
+/* M16b/M18: no-op success.  Triggers are programmed (armed) directly by
+ * mcd_create_trig_f, so activating the set only re-affirms the state.
+ * The reference client's Run sequence calls mcd_remove_trig_set_f and
+ * mcd_activate_trig_set_f around mcd_run_f; neither may fail. */
 mcd_return_et mcd_activate_trig_set_f(const mcd_core_st *core)
 {
     mcd_return_et r = MCD_RET_ACT_NONE;
@@ -1659,24 +1989,56 @@ mcd_return_et mcd_activate_trig_set_f(const mcd_core_st *core)
         r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
                     "mcd_activate_trig_set_f: unknown core handle");
     } else {
-        dbg("mcd_tas: CALL activate_trig_set (empty set: no-op)");
+        dbg("mcd_tas: CALL activate_trig_set (triggers armed on creation)");
     }
     mcd_unlock();
     return r;
 }
 
+/* M18: true removal — clear every programmed trigger unit (TR0..TR7) and
+ * free the model slots.  The reference client calls this before mcd_run_f
+ * and re-creates its triggers afterwards (observed Run order:
+ * remove_trig_set -> [create_trig ...] -> activate_trig_set -> run). */
 mcd_return_et mcd_remove_trig_set_f(const mcd_core_st *core)
 {
     mcd_return_et r = MCD_RET_ACT_NONE;
+    mcd_core_slot_t *cs;
+    uint32_t i, cleared = 0;
 
     mcd_lock();
     err_clear();
 
-    if (core_slot_from(core) == NULL) {
+    cs = core_slot_from(core);
+    if (cs == NULL) {
         r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
                     "mcd_remove_trig_set_f: unknown core handle");
     } else {
-        dbg("mcd_tas: CALL remove_trig_set (empty set: no-op)");
+        for (i = 0; i < MCD_TAS_TRIG_UNITS && r == MCD_RET_ACT_NONE; i++) {
+            mcd_trig_slot_t *slot = &cs->trigs[i];
+            uint32_t evt_off;
+
+            if (!slot->used)
+                continue;
+            evt_off = MCD_TAS_TRIG_EVT_OFF + 8u * slot->unit;
+            r = csfr_write(cs, evt_off, 0, "mcd_remove_trig_set_f");
+            if (r == MCD_RET_ACT_NONE)
+                r = csfr_write(cs, evt_off + 4u, 0,
+                               "mcd_remove_trig_set_f");
+            if (r == MCD_RET_ACT_NONE && slot->is_range) {
+                r = csfr_write(cs, evt_off + 8u, 0,
+                               "mcd_remove_trig_set_f");
+                if (r == MCD_RET_ACT_NONE)
+                    r = csfr_write(cs, evt_off + 8u + 4u, 0,
+                                   "mcd_remove_trig_set_f");
+            }
+            if (r == MCD_RET_ACT_NONE) {
+                slot->used = 0;
+                cleared++;
+            }
+        }
+        if (r == MCD_RET_ACT_NONE)
+            dbg("mcd_tas: CALL remove_trig_set (%u trigger(s) cleared)",
+                (unsigned)cleared);
     }
     mcd_unlock();
     return r;
@@ -1686,20 +2048,36 @@ mcd_return_et mcd_qry_trig_set_f(const mcd_core_st *core, uint32_t start_index,
                                  uint32_t *num_trigs, uint32_t *trig_ids)
 {
     mcd_return_et r = MCD_RET_ACT_NONE;
+    mcd_core_slot_t *cs;
 
-    (void)start_index; (void)trig_ids;
     mcd_lock();
     err_clear();
 
-    if (core_slot_from(core) == NULL) {
+    cs = core_slot_from(core);
+    if (cs == NULL) {
         r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
                     "mcd_qry_trig_set_f: unknown core handle");
     } else if (num_trigs == NULL) {
         r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
                     "mcd_qry_trig_set_f: NULL num_trigs");
     } else {
-        /* No triggers are in the active set (none can be created). */
-        *num_trigs = 0;
+        /* M18: ids of the triggers currently in the set (num_trigs is
+         * in: buffer capacity, out: number written). */
+        uint32_t maxn = *num_trigs;
+        uint32_t written = 0, seen = 0, i;
+
+        for (i = 0; i < MCD_TAS_TRIG_UNITS; i++) {
+            if (!cs->trigs[i].used)
+                continue;
+            if (seen++ < start_index)
+                continue;
+            if (written >= maxn)
+                break;
+            if (trig_ids != NULL)
+                trig_ids[written] = cs->trigs[i].id;
+            written++;
+        }
+        *num_trigs = written;
     }
     mcd_unlock();
     return r;
@@ -1709,19 +2087,28 @@ mcd_return_et mcd_qry_trig_set_state_f(const mcd_core_st *core,
                                        mcd_trig_set_state_st *trig_state)
 {
     mcd_return_et r = MCD_RET_ACT_NONE;
+    mcd_core_slot_t *cs;
 
     mcd_lock();
     err_clear();
 
-    if (core_slot_from(core) == NULL) {
+    cs = core_slot_from(core);
+    if (cs == NULL) {
         r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
                     "mcd_qry_trig_set_state_f: unknown core handle");
     } else if (trig_state == NULL) {
         r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
                     "mcd_qry_trig_set_state_f: NULL trig_state");
     } else {
-        /* Empty trigger set: no hits, no active triggers. */
+        /* M18: active while the set holds triggers; no trigger-bus or
+         * trace links are modelled by the prototype. */
+        uint32_t i, count = 0;
+
+        for (i = 0; i < MCD_TAS_TRIG_UNITS; i++)
+            if (cs->trigs[i].used)
+                count++;
         memset(trig_state, 0, sizeof(*trig_state));
+        trig_state->active = count ? TRUE : FALSE;
     }
     mcd_unlock();
     return r;
@@ -2013,6 +2400,59 @@ static mcd_return_et dbgsr_read(mcd_core_slot_t *cs, uint32_t *value,
                    (unsigned)pe);
 }
 
+/* M18: trigger unit helpers (OCDS TR0..TR7 via the CPUx CSFR window). */
+
+static uint32_t trig_csfr_base(const mcd_core_slot_t *cs)
+{
+    return MCD_TAS_CSFR_BASE_CPU0 +
+           MCD_TAS_CSFR_STRIDE * (uint32_t)cs->core_index;
+}
+
+static mcd_return_et csfr_write(mcd_core_slot_t *cs, uint32_t off,
+                                uint32_t value, const char *fn)
+{
+    tas_rw_item it;
+    uint8_t pe = 0;
+    int rc;
+
+    memset(&it, 0, sizeof(it));
+    it.addr_map = TAS_AM0;
+    it.addr = (uint64_t)trig_csfr_base(cs) + off;
+    it.num_bytes = 4;
+    it.is_write = 1;
+    it.data = (uint8_t *)&value;
+    rc = tas_rw_exec(&cs->conn, &it, 1, cs->con.pl0_max_num_rw, &pe);
+    if (rc == 0 && it.ok)
+        return MCD_RET_ACT_NONE;
+
+    return err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_TXLIST_TX,
+                   "%s: CSFR write @0x%08X failed (rc %d, pl0_err 0x%02x)",
+                   fn, (unsigned)((uint64_t)trig_csfr_base(cs) + off), rc,
+                   (unsigned)pe);
+}
+
+static mcd_return_et csfr_read(mcd_core_slot_t *cs, uint32_t off,
+                               uint32_t *value, const char *fn)
+{
+    tas_rw_item it;
+    uint8_t pe = 0;
+    int rc;
+
+    memset(&it, 0, sizeof(it));
+    it.addr_map = TAS_AM0;
+    it.addr = (uint64_t)trig_csfr_base(cs) + off;
+    it.num_bytes = 4;
+    it.data = (uint8_t *)value;
+    rc = tas_rw_exec(&cs->conn, &it, 1, cs->con.pl0_max_num_rw, &pe);
+    if (rc == 0 && it.ok)
+        return MCD_RET_ACT_NONE;
+
+    return err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_TXLIST_TX,
+                   "%s: CSFR read @0x%08X failed (rc %d, pl0_err 0x%02x)",
+                   fn, (unsigned)((uint64_t)trig_csfr_base(cs) + off), rc,
+                   (unsigned)pe);
+}
+
 static mcd_return_et run_stop_common(const mcd_core_st *core,
                                      mcd_bool_t global, int do_run)
 {
@@ -2054,6 +2494,33 @@ static mcd_return_et run_stop_common(const mcd_core_st *core,
                 if (r != MCD_RET_ACT_NONE)
                     break;
                 if (do_run && (((v >> 1) & 3u) != 0u)) {
+                    /* The core is not running.  If a trigger caught it right
+                     * after the run write (breakpoint race), report success
+                     * with a DEBUG state; otherwise the start failed. */
+                    uint32_t acc = 0;
+                    int trig_hit = 0;
+
+                    if (csfr_read(t, MCD_TAS_TRIG_ACC_OFF, &acc, fn) ==
+                        MCD_RET_ACT_NONE) {
+                        uint32_t k2;
+                        for (k2 = 0; k2 < MCD_TAS_TRIG_UNITS; k2++) {
+                            if (t->trigs[k2].used &&
+                                (acc & (1u << t->trigs[k2].unit)) != 0) {
+                                t->trigs[k2].captured = 1;
+                                trig_hit = 1;
+                            }
+                        }
+                    }
+                    if (trig_hit) {
+                        t->st_valid = 1;
+                        t->st_dbgsr = v;
+                        t->st_state = MCD_CORE_STATE_DEBUG;
+                        t->st_event = MCD_CORE_EVENT_STOPPED;
+                        dbg("mcd_tas: %s: core halted by a trigger right "
+                            "after start (DBGSR=0x%08X, TRIG_ACC=0x%08X)",
+                            fn, (unsigned)v, (unsigned)acc);
+                        break;   /* success: the breakpoint did its job */
+                    }
                     r = err_set(MCD_RET_ACT_HANDLE_ERROR,
                                 MCD_ERR_DEVICE_ACCESS,
                                 "%s: core did not start (DBGSR=0x%08X)",
