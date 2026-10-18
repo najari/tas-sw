@@ -266,6 +266,31 @@ int main(int argc, char **argv)
         }
     }
 
+    /* 7. the synthetic trace data (the feed/parser behaviour - the last
+     * section since the reference may crash on garbage!) */
+    {
+        static uint8_t zero_buf[1024];
+        static uint8_t ff_buf[1024];
+        static uint8_t aa_buf[1024];
+        int bi;
+
+        memset(zero_buf, 0x00, sizeof(zero_buf));
+        memset(ff_buf, 0xFF, sizeof(ff_buf));
+        memset(aa_buf, 0xAA, sizeof(aa_buf));
+        for (bi = 0; bi < 3; bi++) {
+            const uint8_t *buf = (bi == 0) ? zero_buf
+                                : (bi == 1) ? ff_buf : aa_buf;
+            const char *nm = (bi == 0) ? "0x00" : (bi == 1) ? "0xFF" : "0xAA";
+
+            f_clear();
+            r = f_decode(buf, 1, 0x00, 0x05);
+            printf("       decode(%s,1KB) rc 0x%08X err '%s' num_msg %d "
+                   "ec.sum 0x%X\n", nm, (unsigned)r,
+                   f_error() ? f_error() : "(none)", (int)f_num(),
+                   (unsigned)f_ec()->sum_of_all);
+        }
+    }
+
     FreeLibrary(h);
     printf("\n== %s (%d failure(s)) ==\n",
            g_fails ? "SMOKE FAILED" : "SMOKE OK", g_fails);
