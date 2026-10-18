@@ -109,6 +109,16 @@ build\Release\tas_probe.exe [host] [port]
   (화면: `gui_test\m17*.png` · 로그: `drop_in\client_stderr35/36.log`)
 - 배포: `drop_in\mcdxdas.dll` = SHA256 `29A1573B735F71A8…` (M17b)
 
+## step·run_until 조사 결과 (2026-10-18)
+
+- **`mcd_step_f`(싱글스텝) — raw TAS로 구현 불가**:
+  - 메커니즘: CDC 하드웨어 싱글스텝(코어 UM p176 "Single-Step support in hardware") — OCDS/DAP 경유.
+    원본 mcdxdas는 **vtable+0x160** 내부 메서드(rst+0x140·run+0x148·stop+0x168와 별개, DAS/DAP 계열).
+  - raw TAS 노출 수단 없음: AM15 레지스터 목록 전체 확인(raw JTAG 프리미티브 SET_IR/CAPTURE/
+    DATA_SHIFT/CLOCK_CYCLES·리셋 핀·주파수만), DC 옵션(RESET/HALT/UNLOCK)에 step 없음, 서버 문자열에 step 없음.
+  - 구현 경로: **DAP/Cerberus 프로토콜을 AM15 raw JTAG 위에 구현**하는 별도 서브프로젝트 필요.
+- `mcd_run_until_f`: 대상 시간 소스(`qry_current_time`) 미확보 — 동일 계열 후속.
+
 ### 세션 / 애태치 (`mcd_open_core_f`)
 
 - 코어당 **독립 TCP 연결 + 세션**을 열어 최대 4개 코어 동시 지원(같은 타깃+코어 재호출은 기존 세션 재사용).

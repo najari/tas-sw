@@ -314,6 +314,9 @@ trig_set_state 덤프)으로 원본 `mcdxdas.dll`의 레지스터 DB를 전량 �
   2012 MCD 데모 로그의 `rsthlt` 결과와 동일 · reset-and-run → stop → `HALT=01b` ✓ · 실패 0
 - **GUI 검증**: "Reset and Halt"→Debug(PC 0xA0000020) · "Reset"→Running(DE=1) ·
   **"Stop"→Debug·IP 고정**(M17b 수정 확인) → [m17_dropin/](../m17_dropin/) (화면 5종·로그 발췌·smoke 2종)
+- **step 조사(2026-10-18)**: `mcd_step_f`는 raw TAS로 구현 불가 — 메커니즘은 CDC 하드웨어 싱글스텝
+  (OCDS/DAP 경유; 원본은 vtable+0x160 내부 메서드). AM15(raw JTAG 프리미티브만)·DC 옵션·서버 문자열
+  어디에도 노출 없음 → DAP/Cerberus 프로토콜의 AM15 raw JTAG 상 구현이 별도 서브프로젝트로 필요.
 
 ## 4. 구현 메모 (정본 근거)
 
