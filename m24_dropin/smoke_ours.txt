@@ -1,0 +1,28 @@
+== mcdsdl smoke test (M24-1 API surface) ==
+dll: mcdsdl.dll
+
+all 25 exports resolved
+
+  [ok]   mcdsdl_lib_init(4)
+  [ok]   mcdsdl_lib_version
+       version 4.1.0
+  [ok]   get_num_msg == 0 (no decode)
+       get_msg(0) rc 0xFFFFFFFF err 'message index 0 out of range'
+       error_counter sum 0x0
+       marker num_msg 0
+       mcds_file_load('C:\work\tas_server_analysis\m23_rec_orig.mcds') rc 0x00400000
+       error: ERROR no trace data in file
+       num_msg after load: 0
+  [ok]   elf_file_load(test_elf.elf)
+       code_symbol(0x80000100): ok 1 name 'test_func_a' start 0x80000100 size 64
+       data_symbol(0x70000004): ok 1 name 'test_data_x' start 0x70000000 size 16
+       code_symbol_addr('test_func_a'): ok 1 start 0x80000100 size 63
+       data_symbol_addr('test_data_x'): ok 1 start 0x70000000 size 15
+       elf_file_unload_all done
+       decode(NULL,0,KEEP,RAW) rc 0x00000000 err 'mcdsdl: decode engine not implemented in this prototype'
+       get_instr rc 0x00000010 instr 0xDEADBEEF size 3735928559 str set
+       get_instr_type(0x1D000000) = 0 (0=UNKNOWN)
+       mcds_file_save('C:\work\mcdsdl\tests\test_save.mcds') rc 0x00000010
+       reload rc 0x00400000 num_msg 0
+
+== SMOKE OK (0 failure(s)) ==
