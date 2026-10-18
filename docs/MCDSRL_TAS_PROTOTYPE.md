@@ -79,3 +79,16 @@ Infineon **MCDS Recorder Library 3.3.0.0**(`mcd_recorder.dll`)의 **API 호환 �
   DAS64 권장 **DAP miniWiggler V3**(신형!)와의 차이. 원본 3종(recorder/configurator/MTV) 동일 실패와 정합
 - **해결책: P302에 외부 DAP 디버거(DAP miniWiggler V3 등) 연결** → MCDS 개방 → M23-3 즉시 진행!
   (새 보드 불필요 — 디버거 1개로 검증 가능!)
+
+## mcds_decoder.dll 재구현 타당성 (2026-10-18) — 결론: 원본 유지가 정답!
+
+- **API 표면(25 export) = 전부 얇은 래퍼(16~185줄, 합계 ~800줄!)** — recorder와 같은 급! ✓
+- **주변 미들웨어(.mcds 파서 146줄·메시지 분기 111줄·상태 66줄 등) = 소형~중형 ✓** (.mcds 포맷은
+  이미 규명 완료!)
+- **★ 핵심 블로커 = 디코드 엔진: 2,409 함수/174,670줄!** (3,998줄·3,240줄·2,409줄 거대 함수 23개!) —
+  MCDS 트레이스 압축 해제 + 메시지 해석 + **TriCore 디스어셈블** = 사양 없이 디컴파일만으로 재현 ✗
+- **recorder vs decoder 근본 차이**: recorder = I/O 심(로직은 타깃에!) → 구현 가능 ✓ /
+  decoder = 알고리즘 본체(로직이 DLL 안!) → 엔진 재구현 비현실적 ✗ (M16-era 판단이 정확했음!)
+- **권고**: [우리 recorder ✓ → .mcds → **원본 decoder** → MTV/CCL] — .mcds가 표준 포맷이라 완전
+  호환! 부분 구현(API+파일+심볼 ≈1,500줄)은 가능하나 디코드 없이는 실효 제한적
+- 상세: `m23b_dropin/M23_DECODER_FEASIBILITY.md`
