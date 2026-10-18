@@ -42,6 +42,7 @@
 #include <tcf/framework/events.h>
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/trace.h>
+#include <tcf/services/breakpoints.h>
 #include <tcf/services/memorymap.h>
 #include <tcf/services/runctrl.h>
 
@@ -65,9 +66,25 @@
 
 #define AURIX_CSFR_BASE       0xF8810000u  /* CPU0 CSFR window           */
 #define AURIX_CSFR_STRIDE     0x20000u     /* per-core CSFR window step  */
+#define AURIX_CSFR_PC         0xFE08u      /* program counter            */
 #define AURIX_CSFR_DBGSR      0xFD00u      /* debug status register      */
 #define AURIX_CSFR_TRIG       0xF000u      /* TR0EVT trigger unit window */
+#define AURIX_CSFR_TRIG_ACC   0xFD30u      /* trigger accumulator (R/C)  */
 #define AURIX_CSFR_FD10       0xFD10u      /* debug configuration reg    */
+
+/* OCDS trigger units (M18 calibration): TR0..TR7 per core */
+#define AURIX_TRIG_UNITS      8
+#define AURIX_TRIG_EVT_OFF(n) (AURIX_CSFR_TRIG + 8u * (uint32_t)(n))
+#define AURIX_TRIG_ADR_OFF(n) (AURIX_CSFR_TRIG + 4u + 8u * (uint32_t)(n))
+
+/* TRxEVT values: BOD|BBM|EVTA=Halt (0x1A) + access type (M18) */
+#define AURIX_TRIG_EVT_IP     0x0000101Au  /* instruction (TYP=PC)       */
+#define AURIX_TRIG_EVT_WRITE  0x0800001Au  /* data write                 */
+#define AURIX_TRIG_EVT_READ   0x1000001Au  /* data read                  */
+#define AURIX_TRIG_EVT_RW     0x1800001Au  /* data read or write         */
+
+/* the monitor polling interval (usec) */
+#define AURIX_MONITOR_INTERVAL 100000u
 
 /* access HW (DAS AURDUINO adapter) control registers */
 #define AURIX_ADAPTER_CTRL    0xF0000494u
@@ -92,6 +109,12 @@ static const char * const core_names[AURIX_MAX_CORES] = {
 
 typedef struct ContextExtensionAurix {
     int core_index;
+    /* planted hardware breakpoints (OCDS TR unit -> breakpoint) */
+    ContextBreakpoint * hw_bp[AURIX_TRIG_UNITS];
+    /* hardware breakpoints that triggered the last stop (NULL terminated) */
+    ContextBreakpoint * triggered_hw_bp[AURIX_TRIG_UNITS + 1];
+    /* pending trigger accumulator (latched by the run verification) */
+    uint32_t trig_acc;
 } ContextExtensionAurix;
 
 static size_t context_extension_offset = 0;
@@ -103,6 +126,9 @@ static tas_con_info  g_con;
 static tas_server_info g_srv;
 static tas_target    g_targets[TAS_MAX_TARGETS];
 static int           g_ntargets = 0;
+
+/* the core contexts, indexed by core (filled at attach) */
+static Context *     g_core_ctx[AURIX_MAX_CORES];
 
 /* ------------------------------------------------------------------ */
 /* TAS helpers                                                         */
@@ -250,19 +276,61 @@ static int core_run(int core) {
 
     /* verify (M17b): the core must report HALT=00b.  A core that is
      * caught by a trigger right after the run write is a legitimate
-     * stop - report success, the breakpoint did its job. */
+     * stop - latch the trigger accumulator and report it as a stop
+     * (return 1), the breakpoint did its job. */
     if (core_csfr_read(core, AURIX_CSFR_DBGSR, &v) != 0)
         return -1;
     if (((v >> 1) & 3u) != 0u) {
         uint32_t acc = 0;
-        if (core_csfr_read(core, 0xFD30u /* TRIG_ACC */, &acc) == 0 && acc != 0)
-            return 0;
+        if (core_csfr_read(core, AURIX_CSFR_TRIG_ACC, &acc) == 0 && acc != 0) {
+            if (g_core_ctx[core] != NULL)
+                EXT(g_core_ctx[core])->trig_acc |= acc;
+            trace(LOG_ALWAYS, "AURIX: core %d halted by a trigger right after "
+                  "start (DBGSR=0x%08X, TRIG_ACC=0x%08X)", core, (unsigned)v,
+                  (unsigned)acc);
+            return 1;
+        }
         trace(LOG_ALWAYS, "AURIX: core %d did not start (DBGSR=0x%08X)", core,
               (unsigned)v);
         errno = EIO;
         return -1;
     }
     return 0;
+}
+
+/* TRxEVT value for a breakpoint access type (M18) */
+static uint32_t aurix_trig_evt(ContextBreakpoint * bp) {
+    unsigned at = bp->access_types &
+                  ~(unsigned)(CTX_BP_ACCESS_VIRTUAL | CTX_BP_ACCESS_SOFTWARE);
+
+    if (at == CTX_BP_ACCESS_INSTRUCTION) return AURIX_TRIG_EVT_IP;
+    if (at == CTX_BP_ACCESS_DATA_WRITE) return AURIX_TRIG_EVT_WRITE;
+    if (at == CTX_BP_ACCESS_DATA_READ) return AURIX_TRIG_EVT_READ;
+    if (at == (CTX_BP_ACCESS_DATA_READ | CTX_BP_ACCESS_DATA_WRITE))
+        return AURIX_TRIG_EVT_RW;
+    return 0;
+}
+
+/* (re)write the trigger registers of all planted hardware breakpoints:
+ * the reference step sequence disables the trigger units, so they must
+ * be restored after every step */
+static void aurix_rearm_triggers(int core) {
+    Context * ctx = g_core_ctx[core];
+    ContextExtensionAurix * ext;
+    int i;
+
+    if (ctx == NULL) return;
+    ext = EXT(ctx);
+    for (i = 0; i < AURIX_TRIG_UNITS; i++) {
+        ContextBreakpoint * bp = ext->hw_bp[i];
+        uint32_t evt;
+
+        if (bp == NULL) continue;
+        evt = aurix_trig_evt(bp);
+        if (evt == 0) continue;
+        core_csfr_write(core, AURIX_TRIG_ADR_OFF(i), (uint32_t)bp->address);
+        core_csfr_write(core, AURIX_TRIG_EVT_OFF(i), evt);
+    }
 }
 
 /* step: the reference M22 sequence (single instruction) */
@@ -290,6 +358,9 @@ static int core_step(int core) {
         return -1;
     if (step_debug_init(core, 0) != 0)
         return -1;
+    /* the debug init disables the trigger units - restore the planted
+     * hardware breakpoints */
+    aurix_rearm_triggers(core);
 
     /* verify: the core halts again after the instruction */
     for (i = 0; i < 20; i++) {
@@ -307,16 +378,78 @@ static int core_step(int core) {
 /* the native context API                                              */
 /* ------------------------------------------------------------------ */
 
-/* The framework expects stop/step completion to be reported
- * asynchronously (the caller checks !ctx->stopped right after
- * context_stop()): the target access itself is synchronous here, the
- * state change is delivered by a posted event. */
+/* read the trigger accumulator: returns the latched value plus the
+ * hardware value (reading TRIG_ACC clears it) */
+static uint32_t aurix_trig_acc_take(Context * ctx, int core) {
+    ContextExtensionAurix * ext = EXT(ctx);
+    uint32_t acc = ext->trig_acc;
+    uint32_t v = 0;
+
+    ext->trig_acc = 0;
+    if (core_csfr_read(core, AURIX_CSFR_TRIG_ACC, &v) == 0)
+        acc |= v;
+    return acc;
+}
+
+/*
+ * Report an asynchronous stop of a core: determine the reason (hardware
+ * breakpoint via the OCDS trigger accumulator, software breakpoint via
+ * the TriCore 'debug' instruction at the PC) and notify the framework.
+ * 'async_stop' marks stops that were not requested by the framework
+ * (breakpoint hits): they request the intercept, so the client sees the
+ * context as suspended.
+ */
+static void aurix_report_stop(Context * ctx, int core, int async_stop) {
+    ContextExtensionAurix * ext = EXT(ctx);
+    uint32_t acc = aurix_trig_acc_take(ctx, core);
+
+    ctx->stopped_by_bp = 0;
+    ctx->stopped_by_cb = NULL;
+    ctx->stopped_by_exception = 0;
+    ctx->stopped_by_funccall = 0;
+    ext->triggered_hw_bp[0] = NULL;
+
+    if (acc != 0) {
+        int i, cnt = 0;
+        for (i = 0; i < AURIX_TRIG_UNITS; i++) {
+            if ((acc & (1u << i)) != 0 && ext->hw_bp[i] != NULL)
+                ext->triggered_hw_bp[cnt++] = ext->hw_bp[i];
+        }
+        if (cnt > 0) {
+            ext->triggered_hw_bp[cnt] = NULL;
+            ctx->stopped_by_cb = ext->triggered_hw_bp;
+            trace(LOG_ALWAYS, "AURIX: core %d stopped by hardware breakpoint "
+                  "(TRIG_ACC=0x%08X, %d bp)", core, (unsigned)acc, cnt);
+        }
+    }
+    if (ctx->stopped_by_cb == NULL) {
+        /* software breakpoint?  The TriCore 'debug' instruction halts the
+         * core at (or just after) the break instruction - ask the
+         * Breakpoints service whether the PC is a planted breakpoint. */
+        uint32_t pc = 0;
+        if (core_csfr_read(core, AURIX_CSFR_PC, &pc) == 0 &&
+            (is_breakpoint_address(ctx, (ContextAddress)pc) ||
+             is_breakpoint_address(ctx, (ContextAddress)(pc - 2)))) {
+            ctx->stopped_by_bp = 1;
+            trace(LOG_ALWAYS, "AURIX: core %d stopped at a software breakpoint "
+                  "(PC=0x%08X)", core, (unsigned)pc);
+        }
+    }
+
+    if (async_stop && !ctx->exiting)
+        ctx->pending_intercept = 1;   /* the client must see the stop */
+    ctx->stopped = 1;
+    send_context_stopped_event(ctx);
+}
+
+/* The framework expects stop completion to be reported asynchronously
+ * (the caller checks !ctx->stopped right after context_stop()): the
+ * target access itself is synchronous here, the state change is
+ * delivered by a posted event. */
 static void aurix_stopped_event(void * args) {
     Context * ctx = (Context *)args;
-    if (!ctx->stopped) {
-        ctx->stopped = 1;
-        send_context_stopped_event(ctx);
-    }
+    if (!ctx->stopped)
+        aurix_report_stop(ctx, EXT(ctx)->core_index, 0);
     context_unlock(ctx);
 }
 
@@ -326,13 +459,54 @@ static int post_stopped_event(Context * ctx) {
     return 0;
 }
 
+/* asynchronous stop (breakpoint hit): request the intercept */
+static void aurix_async_stop_event(void * args) {
+    Context * ctx = (Context *)args;
+    if (!ctx->stopped)
+        aurix_report_stop(ctx, EXT(ctx)->core_index, 1);
+    context_unlock(ctx);
+}
+
+static int post_async_stop_event(Context * ctx) {
+    context_lock(ctx);
+    post_event(aurix_async_stop_event, ctx);
+    return 0;
+}
+
+/*
+ * The core state monitor: the cores can halt by themselves (breakpoint,
+ * trigger, trap), so the backend polls the debug status register and
+ * reports the transitions (the reference agent has a monitor thread for
+ * the same purpose).
+ */
+static void aurix_monitor(void * args) {
+    int i;
+
+    (void)args;
+    for (i = 0; i < AURIX_MAX_CORES; i++) {
+        Context * ctx = g_core_ctx[i];
+        uint32_t v = 0;
+
+        if (ctx == NULL || ctx->exited || ctx->stopped) continue;
+        if (core_csfr_read(i, AURIX_CSFR_DBGSR, &v) != 0) continue;
+        if (((v >> 1) & 3u) == 1u) {
+            trace(LOG_ALWAYS, "AURIX: core %d stopped (DBGSR=0x%08X)", i,
+                  (unsigned)v);
+            aurix_report_stop(ctx, i, 1);
+        }
+    }
+    if (g_attached)
+        post_event_with_delay(aurix_monitor, NULL, AURIX_MONITOR_INTERVAL);
+}
+
 int context_has_state(Context * ctx) {
     (void)ctx;
     return 1;
 }
 
 const char * context_suspend_reason(Context * ctx) {
-    if (ctx->stopped_by_bp) return REASON_BREAKPOINT;
+    if (ctx->stopped_by_bp || ctx->stopped_by_cb != NULL)
+        return REASON_BREAKPOINT;
     if (ctx->stopped_by_exception) return REASON_EXCEPTION;
     return REASON_USER_REQUEST;
 }
@@ -346,14 +520,52 @@ int context_stop(Context * ctx) {
     return post_stopped_event(ctx);
 }
 
+/* the core is halted at a planted instruction breakpoint? */
+static int pc_at_instruction_bp(Context * ctx, int core) {
+    ContextExtensionAurix * ext = EXT(ctx);
+    uint32_t pc = 0;
+    int i;
+
+    if (core_csfr_read(core, AURIX_CSFR_PC, &pc) != 0)
+        return 0;
+    for (i = 0; i < AURIX_TRIG_UNITS; i++) {
+        ContextBreakpoint * bp = ext->hw_bp[i];
+        if (bp == NULL) continue;
+        if ((bp->access_types & CTX_BP_ACCESS_INSTRUCTION) == 0) continue;
+        if ((uint32_t)bp->address == pc) return 1;
+    }
+    return 0;
+}
+
 int context_continue(Context * ctx) {
+    int core = EXT(ctx)->core_index;
+    int rc;
+
     assert(context_has_state(ctx));
     assert(!ctx->exited);
 
-    if (core_run(EXT(ctx)->core_index) < 0)
+    /* If the core is halted at a planted instruction breakpoint, step
+     * over it first: otherwise the PC trigger fires again immediately
+     * (the PC still equals the trigger address). */
+    if (pc_at_instruction_bp(ctx, core)) {
+        if (core_step(core) != 0)
+            return -1;
+    }
+
+    rc = core_run(core);
+    if (rc < 0)
         return -1;
-    /* the context is running again (win32_resume does the same) */
-    send_context_started_event(ctx);
+    if (rc == 0) {
+        /* the context is running again (win32_resume does the same) */
+        send_context_started_event(ctx);
+    }
+    else {
+        /* a trigger caught the core right after the start: make the
+         * framework's view consistent (running) and then report the
+         * stop asynchronously, like any other stop */
+        send_context_started_event(ctx);
+        post_async_stop_event(ctx);
+    }
     return 0;
 }
 
@@ -485,23 +697,75 @@ int context_get_memory_map(Context * ctx, MemoryMap * map) {
 
 int context_get_supported_bp_access_types(Context * ctx) {
     (void)ctx;
-    /* software breakpoints ('debug' instruction) are supported;
-     * hardware breakpoints (OCDS TR0..TR7) are M25-2 */
-    return CTX_BP_ACCESS_INSTRUCTION | CTX_BP_ACCESS_SOFTWARE;
+    /* software breakpoints (the TriCore 'debug' instruction) and hardware
+     * breakpoints (OCDS TR0..TR7: instruction / data read / data write) */
+    return CTX_BP_ACCESS_INSTRUCTION | CTX_BP_ACCESS_DATA_READ |
+           CTX_BP_ACCESS_DATA_WRITE | CTX_BP_ACCESS_SOFTWARE;
 }
 
+/*
+ * Hardware breakpoints: the OCDS trigger units TR0..TR7 of the core
+ * (M18 calibration).  Each unit holds one address (TRxADR) and an event
+ * configuration (TRxEVT); a hit halts the core and sets the unit's bit
+ * in TRIG_ACC (read clears).
+ */
 int context_plant_breakpoint(ContextBreakpoint * bp) {
-    (void)bp;
-    /* ERR_UNSUPPORTED makes the Breakpoints service plant a generic
-     * software breakpoint instead (breakpoints.c) */
-    errno = ERR_UNSUPPORTED;
-    return -1;
+    ContextExtensionAurix * ext = EXT(bp->ctx);
+    uint32_t evt;
+    int unit = -1;
+    int i;
+
+    if (bp->length > 1) {
+        /* ranges need a unit pair (TR0ADR/TR1ADR) - not implemented yet */
+        errno = ERR_UNSUPPORTED;
+        return -1;
+    }
+    evt = aurix_trig_evt(bp);
+    if (evt == 0) {
+        errno = ERR_UNSUPPORTED;
+        return -1;
+    }
+
+    for (i = 0; i < AURIX_TRIG_UNITS; i++) {
+        if (ext->hw_bp[i] == NULL) {
+            unit = i;
+            break;
+        }
+    }
+    if (unit < 0) {
+        set_errno(ERR_OTHER, "All hardware breakpoints are already in use");
+        return -1;
+    }
+
+    ext->hw_bp[unit] = bp;
+    bp->id = (unsigned)unit + 1;
+    if (core_csfr_write(ext->core_index, AURIX_TRIG_ADR_OFF(unit),
+                        (uint32_t)bp->address) != 0 ||
+        core_csfr_write(ext->core_index, AURIX_TRIG_EVT_OFF(unit), evt) != 0) {
+        ext->hw_bp[unit] = NULL;
+        bp->id = 0;
+        return -1;
+    }
+    trace(LOG_ALWAYS, "AURIX: core %d: hardware breakpoint 0x%08X "
+          "(access 0x%X) planted in TR%d", ext->core_index,
+          (unsigned)bp->address, (unsigned)bp->access_types, unit);
+    return 0;
 }
 
 int context_unplant_breakpoint(ContextBreakpoint * bp) {
-    (void)bp;
-    errno = ERR_UNSUPPORTED;
-    return -1;
+    ContextExtensionAurix * ext = EXT(bp->ctx);
+    int i;
+
+    for (i = 0; i < AURIX_TRIG_UNITS; i++) {
+        if (ext->hw_bp[i] == bp) {
+            ext->hw_bp[i] = NULL;
+            core_csfr_write(ext->core_index, AURIX_TRIG_EVT_OFF(i), 0);
+            trace(LOG_ALWAYS, "AURIX: core %d: hardware breakpoint TR%d removed",
+                  ext->core_index, i);
+        }
+    }
+    bp->id = 0;
+    return 0;
 }
 
 #if ENABLE_ContextMemoryProperties
@@ -556,8 +820,13 @@ int context_read_mem_ext(Context * ctx, MemoryAccessMode * mode,
 #if ENABLE_ContextBreakpointCapabilities
 int context_get_breakpoint_capabilities(Context * ctx, const char *** names,
                                         const char *** values, int * cnt) {
+    /* the reference agent reports the hardware breakpoint type (TR0..TR7) */
+    static const char * nm[] = { "BreakpointType" };
+    static const char * vl[] = { "\"Hardware\"" };
     (void)ctx;
-    *cnt = 0;
+    *names = nm;
+    *values = vl;
+    *cnt = 1;
     return 0;
 }
 #endif
@@ -695,6 +964,7 @@ static void aurix_init_event(void * args) {
         ctx->reg_access = REG_ACCESS_RD_STOP | REG_ACCESS_WR_STOP;
         list_add_last(&ctx->ctxl, &context_root);
         ctx->ref_count = 1;
+        g_core_ctx[i] = ctx;
         send_context_created_event(ctx);
 
         /* report the halted state and request the intercept */
@@ -703,6 +973,9 @@ static void aurix_init_event(void * args) {
         send_context_stopped_event(ctx);
     }
     trace(LOG_ALWAYS, "AURIX: %d core contexts created", AURIX_MAX_CORES);
+
+    /* start the core state monitor (asynchronous stop detection) */
+    post_event_with_delay(aurix_monitor, NULL, AURIX_MONITOR_INTERVAL);
 }
 
 void init_contexts_sys_dep(void) {

@@ -62,7 +62,8 @@ tcf_agent/agent/
 | 단계 | 내용 | 상태 |
 |---|---|---|
 | **M25-1** | TAS 이식 + 네이티브 백엔드 + 레지스터 40 + run/stop/step + 빌드 통합 + VS Code 라이브 | **✓ 완료** |
-| **M25-2** | HW BP(TR0-7, M18) + memory map(M8) + canonical(SPR, M20) + 정지사유(EVTSRC→Breakpoint) | 예정 |
+| **M25-2** | 코어 모니터(비동기 정지!) + HW BP(TR0-7) + 정지사유(Breakpoint 파리티) + step-over/트리거 재장전 | **✓ 완료** (상세: `M25_2_BREAKPOINTS.md`) |
+| **M25-2b** | memory map("Code and Data") + canonical SPR + BP 범위(유닛 페어) + 데이터 워치포인트 UI | 예정 |
 | **M25-3** | CSA 스택 크롤(PCXI/FCX/LCX) + TriCore 디스어셈블러 + SVD + 심볼/소스(ELF 경로) | 예정 |
 | (선택) | MCDS 사이드카(우리 recorder/decoder) | M23/M24 재사용 |
 
