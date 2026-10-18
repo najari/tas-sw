@@ -42,3 +42,15 @@ Infineon **MCDS Recorder Library 3.3.0.0**(`mcd_recorder.dll`)의 **API 호환 �
 
 - 어댑터 측 MCDS 접근 해결 여부에 종속. 해결 시: 우리 recorder로 녹화 → `.mcds` →
   원본 디코더(`mcdsdl_mcds_file_load`) 교차 검증 → MTV/CCL 드롭인.
+
+## 보드/어댑터 정체 규명 (2026-10-18 후속)
+
+- 사용자 보드 = **Hitex ShieldBuddy TC275** — "**AURDuino**"(Hitex IDE 이름!) = 보드의 온보드 디버그
+  → DAS의 "DAS JTAG AURDUINO 46YPEADW" = ShieldBuddy 온보드 인터페이스. USB = `Infineon DAS JDS
+  Debug` (VID_058B/PID_0043, FTDI — DAS ReleaseNotes의 "Bare On-Board Wiggler (BOBW)" 계열!)
+- **EMEM 실재 테스트(결정적)**: map 0 @ 0x50000000 쓰기→되읽기 **성공(0x12345678!)** → **EMEM(1MB)
+  실재 = 칩은 TC275ED(MCDS 탑재!)** 확정 ✓ (증거: m23b_dropin/m23_emem_test.log)
+- 매뉴얼: MTV = ED 전용 ✓ + "USB cable to a TriBoard or a **DAP miniWiggler**" (권장 = AP56004 DAP
+  miniWiggler V3!) · 보드 매뉴얼 = "accessed via JTAG or DAP" · map 0=제품칩/map 1=EEC (TC27x UM §1.4.4)
+- → 타깃 하드웨어(MCDS!)는 존재 ✓ — 남은 관건 = **온보드 AURDuino(FTDI/BOBW)의 EEC 접근 지원 여부**
+  (0x8D의 유력 원인). DAP miniWiggler V3 또는 TriBoard로 검증 시 우리 recorder 즉시 동작 예상.

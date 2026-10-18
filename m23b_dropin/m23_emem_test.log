@@ -1,0 +1,26 @@
+  map  0 @ 0x50000000 : rc  0 ok 1 pl0 0x00 value 0x00000000
+  map  0 @ 0xAF000000 : rc  0 ok 1 pl0 0x00 value 0x00000000
+  map  0 @ 0x50100000 : rc  0 ok 1 pl0 0x00 value 0x00000000
+  map  0 @ 0x50000000 : rc  0 ok 1 pl0 0x00 value 0x00000000
+-- window A: 0x50000000 (map 0) --
+  map  0 @ 0x50000000 : rc  0 ok 1 pl0 0x00 value 0x00000000
+  WR map  0 @ 0x50000000 <- 0x12345678 : rc  0 ok 1 pl0 0x00
+  map  0 @ 0x50000000 : rc  0 ok 1 pl0 0x00 value 0x12345678
+  WR map  0 @ 0x50000000 <- 0x00000000 : rc  0 ok 1 pl0 0x00
+  map  0 @ 0x50000000 : rc  0 ok 1 pl0 0x00 value 0x00000000
+-- window B: 0xAF000000 (the configurator EMEM base!) --
+  map  0 @ 0xAF000000 : rc  0 ok 1 pl0 0x00 value 0x00000000
+  WR map  0 @ 0xAF000000 <- 0x12345678 : rc  0 ok 1 pl0 0x00
+  map  0 @ 0xAF000000 : rc  0 ok 1 pl0 0x00 value 0x00000000
+  WR map  0 @ 0xAF000000 <- 0x00000000 : rc  0 ok 1 pl0 0x00
+  map  0 @ 0xAF000000 : rc  0 ok 1 pl0 0x00 value 0x00000000
+-- window C: 0x50010000 (inside the 1MB EMEM) --
+  map  0 @ 0x50010000 : rc  0 ok 1 pl0 0x00 value 0x00000000
+  WR map  0 @ 0x50010000 <- 0x12345678 : rc  0 ok 1 pl0 0x00
+  map  0 @ 0x50010000 : rc  0 ok 1 pl0 0x00 value 0x12345678
+  WR map  0 @ 0x50010000 <- 0x00000000 : rc  0 ok 1 pl0 0x00
+  map  0 @ 0x50010000 : rc  0 ok 1 pl0 0x00 value 0x00000000
+== restore: reset (DC option 3) ==
+  reset+halt ok
+  map  0 @ 0x50000000 : rc  0 ok 1 pl0 0x00 value 0x00000000
+  map  0 @ 0xAF000000 : rc  0 ok 1 pl0 0x00 value 0x00000000
