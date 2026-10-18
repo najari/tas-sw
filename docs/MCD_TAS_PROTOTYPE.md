@@ -7,7 +7,7 @@ TasServer(24817) 백엔드로** 구동하는 프로토타입 DLL(`mcd_tas.dll`)�
 - 프로토콜 근거: ① 본 저장소 캡처 해독 [TAS_PROTOCOL_CAPTURE.md](TAS_PROTOCOL_CAPTURE.md) §8
   ② 공식 `tas_client_api` 소스(`tas_pkt.h`, `tas_pkt_handler_rw.cpp`, `tas_client_server_con.cpp`) — 양쪽 상호 일치 확인.
 - 원칙: **읽기 전용 기본** — Run/Stop(M16)·Reset(M17)·트리거(M18)는 사용 승인 하 실구현·검증 완료;
-  `step`/`run_until`은 미구현(스텁, DAP 필요), CHL/trace API는 원본도 미구현(파리티 스텁).
+  `run_until`은 미구현(스텁, 시간 소스 부재), CHL/trace API는 원본도 미구현(파리티 스텁).
 
 ## 0. 상태 요약
 
@@ -31,7 +31,8 @@ TasServer(24817) 백엔드로** 구동하는 프로토타입 DLL(`mcd_tas.dll`)�
 | M18 | 트리거(브레이크포인트) 실구현 — OCDS TR0..TR7 직접 프로그래밍(PC/데이터·단일/범위·halt) | **완료·검증(§3-R)** — PC 일치 정지(EVTSRC=TR0EVT)·GUI IP Trigger 전 라이프사이클 |
 | M19 | trace·잔여 함수 원본 교차 캘리브레이션 — 원본 DLL 직접 프로브(신규) | **완료·검증(§3-S)** — 12/12 라인 완전 일치(trace 무음 오류·core_modes 2종·max_payload 16384·trig_info) |
 | M20 | SPR 로컬→전역 변환 — 로컬 DSPR/PSPR 주소를 코어별 버스 별칭으로 해석(M15 잔여 GAP) | **완료·검증(§3-T)** — 수정 전 PL0 오류 → 수정 후 원본 파리티(읽기+쓰기) · GUI 로컬 주소 쓰기/읽기/복원 · **M20b**: reg_map 코어별 PC(원본 교차 40/40) |
-| M21 | `step` 조사·실험 — 원본 메커니즘 규명(FE60 + DBGSR←4) + PL0 경로 GO 실험 | **조사·실험 완료** — PL0 DBGSR←4 = 싱글스텝 아님(실측) · 구현에는 DAS 다이얼렉트(≥0x40 아이템) 필요 — 미구현 유지 |
+| M21 | `step` 조사·실험 — 원본 메커니즘 규명(FE60 + DBGSR←4) + PL0 경로 GO 실험 | **조사·실험 완료** — PL0 DBGSR←4 = 싱글스텝 아님(실측) · DAS 다이얼렉트 가설 → **M22에서 해결** |
+| M22 | `step` 실구현 + run 접근 HW 시퀀스 — Frida 트래픽 캡처로 원본 시퀀스 확보 | **완료·검증(§3-U)** — 1명령 실행 후 재정지(원본 동일) · GUI Step/Run/Stop ✓ · M22b run(SUSP 재개) |
 
 ## 1. 구현 범위
 
@@ -371,6 +372,22 @@ trig_set_state 덤프)으로 원본 `mcdxdas.dll`의 레지스터 DB를 전량 �
   **전 40개 +0x20000(40/40 일치)** · 라이브 PC 읽기 코어별 상이값 · smoke `--regmap`/`--core N` 신규
   — → [m20b_dropin/](../m20b_dropin/) (원본/우리 덤프 각 3종)
 
+### U. M22 — `step` 실구현 + run 접근 HW 시퀀스 (2026-10-18)
+
+- **방법**: REA Frida로 원본 mcdxdas.dll의 `ws2_32!send` 트래픽을 캡처(spawn+후킹) — M21의
+  "DAS 다이얼렉트 필요" 결론을 실측으로 정정
+- **원본 step 시퀀스**(프레임 실측): [디버그 초기화 — 트리거 유닛 8개(`0x2000/0xFFFFFFFF` 패턴 +
+  TR0 `0x3002/0x0`) + DBGSR..+0xF 영소거 + `FD10←0x2A`, **한 PL0 프레임**] →
+  [`0xF0000494←0x8000003E`] → [`DBGSR←4`] → [`0xF0000494←0x8000003F`] → [초기화 재실행] →
+  **1명령 실행 후 재정지**(DBGSR `0x100B` = SUSP 복귀)
+- **`mcd_step_f` 실구현**: 정지 선확인·step_type(INSTR/CUSTOM_LO..HI) 검증·초기화(WRBLK 2+WR32 1)·
+  어댑터 브래킷·DBGSR←4 ×n_steps·정지 재확인 — 원본 정본 문구 사용
+- **M22b — run**: 어댑터 시퀀스(`0494←3E→DBGSR=4→0494←3F→DBGSR=4→049C←2`) 추가 —
+  SUSP(디버거 홀드) 코어 재개(M21 실험 실패 케이스 해소)
+- **검증**: smoke `--step`/`--steps 4`(우리·원본 동일 동작) · 회귀 전량 OK ·
+  **GUI: Step ×3(IP +26B = 루프 1명령씩)·Run(Running)·Stop(Debug)** — → [m22_dropin/](../m22_dropin/)
+  (로그 6종·Frida 프레임 대조·GUI 화면 5종)
+
 ## 4. 구현 메모 (정본 근거)
 
 - **프레임 빌더** (`tas_pkt_handler_rw.cpp` 규칙, §8 실측과 일치):
@@ -424,8 +441,10 @@ trig_set_state 덤프)으로 원본 `mcdxdas.dll`의 레지스터 DB를 전량 �
   **M20b**: reg_map 코어별 PC(원본 교차 40/40, 라이브 PC 읽기) — 코어 문맥 계열 파리티 마감.
 - **M21(조사·실험, 2026-10-18)**: `step` 원본 메커니즘 규명 — FE60 처리 + DBGSR←4 시퀀스(REA 정적,
   디스어셈블리 확정) · 우리 PL0 경로 GO 실험 = **싱글스텝 아님**(안전 정지 ✓, Debug 복원) ·
-  구현에는 **DAS 다이얼렉트(≥0x40 아이템/opcode)** 필요(서브프로젝트급, 미구현 유지).
+  **M22에서 실구현으로 해결**(어댑터 시퀀스 누락이 원인 — DAS 다이얼렉트 가설 정정).
   증거: [m21_dropin/](../m21_dropin/) · 도구: smoke `--stepexp`/`--stepgo`.
+- **M22(완료, 2026-10-18)**: `step` 실구현(§3-U) — Frida 캡처 기반 원본 시퀀스 재현(1명령 실행 후 재정지),
+  M22b run 어댑터 시퀀스(SUSP 재개), GUI Step/Run/Stop 검증. **남은 실갭: `run_until`(시간 소스 부재)뿐.**
 - **다음**: 새 요구사항에 한함.
 
 ## 부록. 산출물

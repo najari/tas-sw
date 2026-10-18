@@ -1,0 +1,50 @@
+== mcd_tas smoke test ==
+dll: mcd_tas.dll
+cfg: (default)
+mode: with core attach (--attach) + mcd_step_f call (--step)
+core: 0
+
+all exports resolved
+
+  [ok]   mcd_initialize_f
+       impl: api 1.1 'SPRINT Release', vendor 'mcd_tas prototype', build 0.2.0, date Oct 18 2026
+  [ok]   mcd_qry_servers_f (count)
+       running servers on localhost: 1
+  [ok]   mcd_qry_servers_f (fetch)
+       server[0]: 'TasServer' acc_hw 'DAS JTAG AURDUINO 46YPEADW' system_instance ''
+  [ok]   mcd_open_server_f
+  [ok]   mcd_qry_systems_f
+       system 'Real HW' instance '' host :0
+  [ok]   mcd_qry_devices_f
+       device[0]: acc_hw 'DAS JTAG AURDUINO 46YPEADW' device 'TC27x' type 0x401DA083 id 0x00000000
+  [ok]   mcd_qry_cores_f
+       core[0]: 'Core 0: CPU0 TriCore 1.6E' core_type 44 core_id 0x00B7C002 (acc_hw 'DAS JTAG AURDUINO 46YPEADW')
+       core[1]: 'Core 1: CPU1 TriCore 1.6P' core_type 44 core_id 0x00C0C012 (acc_hw 'DAS JTAG AURDUINO 46YPEADW')
+       core[2]: 'Core 2: CPU2 TriCore 1.6P' core_type 44 core_id 0x00C0C012 (acc_hw 'DAS JTAG AURDUINO 46YPEADW')
+  NOTE: --attach performs TAS DEVICE_CONNECT (JTAG hot attach, no reset/halt)
+  [ok]   mcd_open_core_f (session + attach)
+  [ok]   mcd_qry_mem_spaces_f
+       mem space id 0 'Code and Data' type 0x0 range 0x0..0xFFFFFFFF opts 0x200
+  [ok]   mcd_qry_mem_blocks_f returns HANDLE_ERROR (reference: unimplemented)
+       mem blocks rc 3: code 0x00000100 'Function is not implemented'
+  [ok]   mcd_qry_rst_classes_f
+       rst class vector 0x00000007
+       rst_info[0]: class_vector 0x00000001 'Power-On Reset (with PORST pin)'
+       rst_info[1]: class_vector 0x00000002 'System Reset'
+       rst_info[2]: class_vector 0x00000004 'Application Reset'
+       after attach: device 'TC27x' type 0x401DA083 id 0x00000000
+  [ok]   mcd_execute_txlist_f (2 read transactions)
+       rd32  @0xF0000480 -> 01 00 08 00
+       rd16B @0xF0000480 -> 01 00 08 00 00 00 00 00 88 04 00 F0 68 F0 10 00
+  -- M22 mcd_step_f call (--step, n_steps=4) --
+       before: DBGSR 0x0000100B  PC 0x8003A328
+       mcd_step_f rc 0 code 0x00000000 ''
+       after:  DBGSR 0x0000100B  PC 0x8003A330 (delta 8)
+  [ok]   mcd_qry_state_f
+       state 0x3 (other) info ''
+  [ok]   mcd_close_core_f
+  [ok]   mcd_run_f(NULL) returns HANDLE_ERROR
+       error 0x00000102: mcd_run_f: unknown core handle
+  [ok]   mcd_close_server_f
+
+== SMOKE OK (0 failure(s)) ==
