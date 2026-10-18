@@ -1,0 +1,30 @@
+== mcdsrl smoke test (M23-1 core) ==
+dll: mcdsrl_tas.dll
+
+all exports resolved
+
+  [ok]   mcdsrl_lib_init(3)
+  [ok]   mcdsrl_lib_version
+       version 3.3.0
+       qry_devices rc 0x00000000 n 1
+       dev[0] acc_hw 'DAS JTAG AURDUINO 46YPEADW' type 0x401DA083 id 0x47427060 system 'Real HW' port 24817
+  [ok]   mcdsrl_connect_device
+       connected: acc_hw 'DAS JTAG AURDUINO 46YPEADW' device 'TC27xED' type 0x401DA083 id 0x47427060
+  [ok]   mcdsrl_device_connected
+       cplty 0x8 bandwidth 0 trace_buf 0
+  [ok]   mcdsrl_read (0x70000000)
+       orig 0x00000000
+  [ok]   mcdsrl_write (pattern)
+  [ok]   read back pattern
+       readback 0x12345678
+  [ok]   restore original
+  [ok]   mcdsrl_read_list (3)
+       values 0x00000000 0x00000000 0x00000000 (ok 3)
+  [ok]   mcdsrl_read_block (16)
+  [ok]   mcdsrl_write_block (16)
+  [ok]   restore block
+  [ok]   mcdsrl_read_timestamped
+       value 0x00000000 ts_before 0x4C489120 ts_after 0x4C4894E2
+  [ok]   mcdsrl_disconnect_device
+
+== SMOKE OK (0 failure(s)) ==
