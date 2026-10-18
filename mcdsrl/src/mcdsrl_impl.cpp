@@ -26,6 +26,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <time.h>
 
 #include "mcds_lib.h"
 #include "mcds_lib_recorder.h"
@@ -56,6 +57,35 @@ typedef struct {
     mcd_core_con_info_st con_connected;
     mcdsrl_cplty_st      cplty;
     char                 last_err[256];
+    /* M23-2: the recording state */
+    uint32_t             mcds_ctrl_base;   /* the MCDS control registers  */
+    uint32_t             mcds_status_base; /* the FIFO/status registers   */
+    uint32_t             mcds_emem_base;   /* the EMEM (class 1 devices)  */
+    uint32_t             fifo_base;        /* the FIFO bottom (from config) */
+    uint32_t             fifo_top;         /* the FIFO top (from config)  */
+    uint32_t             trace_max_kb;     /* the trace memory size       */
+    int                  mcds_present;     /* the MCDS-ID marker seen     */
+    int                  device_class;     /* the class from the device table */
+    uint32_t             device_id_short;  /* the table device id (0x310) */
+    float                freq_hz;          /* the measured MCDS clock     */
+    int                  cfg_set;
+    mcdsl_mcdsc_st       mcdsc;          /* stored config (start writes it) */
+    mcdsl_mcdsc_st       mcdsc_cleanup;  /* stored cleanup config */
+    int                  cleanup_set;
+    uint8_t             *trace_buf;      /* the caller's buffer (or NULL) */
+    uint32_t             trace_buf_kb;
+    FILE                *trace_file;     /* the open .mcds file (or NULL) */
+    char                 trace_file_name[260];
+    int                  started;
+    int                  need_stop;      /* a stop is pending (0xf1)    */
+    int                  stop_done;      /* the cached stop result      */
+    __time64_t           rec_time;
+    uint64_t             start_ms;
+    uint32_t             elapsed_ms;
+    uint32_t             trace_size_kb;  /* the cached progress */
+    uint32_t             stop_size_kb;
+    uint32_t             stop_time_ms;
+    uint32_t             stop_gaps;
 } mcdsrl_ctx_t;
 
 static mcdsrl_ctx_t g;
@@ -358,8 +388,35 @@ mcdsl_return_et mcdsrl_connect_device(const mcd_core_con_info_st *con_requested,
         strncpy(g.con_connected.device,
                 device_short_name(g.con_connected.device_type, ed),
                 sizeof(g.con_connected.device) - 1);
+        /* The MCDS parameter set for the TC2xx miniMCDS devices (from the
+         * reference device table and FUN_180005c40): the control register
+         * window, the FIFO/status window and the EMEM base. */
+        g.mcds_ctrl_base = ed ? 0xF90E6000u : 0u;
+        g.mcds_status_base = ed ? 0xF90E8000u : 0u;
+        g.mcds_emem_base = ed ? 0x9F000000u : 0u;
     }
+    g.device_id_short = 0;
+    g.device_class = 0;
+    g.mcds_present = 0;
+    g.freq_hz = 0.0f;
+    g.fifo_base = 0;
+    g.fifo_top = 0;
+    g.trace_max_kb = 0;
+    g.cfg_set = 0;
+    g.cleanup_set = 0;
+    g.need_stop = 0;
+    g.stop_done = 0;
+    g.trace_buf = NULL;
+    g.trace_buf_kb = 0;
+    g.trace_file = NULL;
+    g.started = 0;
+    g.trace_size_kb = 0;
     cls = device_class(g.con_connected.device_type);
+    g.device_class = cls;
+    /* the table device id (0x310 for the TC27xED; used by the reference
+     * 0x310/0x30F special sequences) */
+    if ((g.con_connected.device_type & 0x0FFFFFFFu) == 0x1DA083u)
+        g.device_id_short = 0x310;
     /* Calibrated against the reference for this setup (DAS miniWiggler
      * class tool on a Windows PC): continuous trace is possible but
      * unreliable. */
@@ -388,6 +445,13 @@ mcdsl_return_et mcdsrl_disconnect_device(void)
     if (!g.device_connected)
         return err_set(MCDSL_RET_FUNCTION_USED_WRONGLY,
                        "No device connected");
+    if (g.trace_file != NULL) {
+        fclose(g.trace_file);
+        g.trace_file = NULL;
+    }
+    g.started = 0;
+    g.cfg_set = 0;
+    g.cleanup_set = 0;
     tas_disconnect(&g.conn);
     g.device_connected = 0;
     err_clear();
@@ -697,48 +761,611 @@ mcdsl_return_et mcdsrl_read_timestamped(uint32_t addr, uint32_t *value,
 }
 
 /* ------------------------------------------------------------------ */
-/* Trace recording (M23-2 stubs)                                       */
+/* Trace recording (M23-2)                                             */
 /* ------------------------------------------------------------------ */
+
+/* MCDS register offsets (reference decompile; the TC2xx miniMCDS class):
+ *   ctrl_base + 0x004     : the OCS register (must read 0 before start)
+ *   ctrl_base + 0x210     : the trace control (stop: write 0x8400)
+ *   ctrl_base + 0x100000  : the trace read port (fixed address)
+ *   ctrl_base + 0x101030  : the final trace size (32 byte paragraphs)
+ *   status_base + 0x200   : the FIFO fill level (progress)
+ */
+#define MCDSRL_OFF_OCS          0x000004u
+#define MCDSRL_OFF_TRACE_CTRL   0x000210u
+#define MCDSRL_OFF_TRACE_PORT   0x100000u
+#define MCDSRL_OFF_TRACE_SIZE   0x101030u
+#define MCDSRL_OFF_FIFO_FILL    0x000200u
+#define MCDSRL_TRACE_STOP_VAL   0x8400u
+#define MCDSRL_FREQ_REG         0xC0100u
+#define MCDSRL_FREQ_DEFAULT     80000000u
+#define MCDSRL_FREQ_MIN         2000000u
+#define MCDSRL_CPU0_START_A     0xF0000490u
+#define MCDSRL_CPU0_START_B     0xFA101010u
+
+/* the long device name table (faithful reconstruction of the reference
+ * device_id_to_name_long(); ed = the ED variant flag) */
+static const char *device_id_to_name_long(uint32_t device_type, int ed)
+{
+    uint32_t v = device_type & 0x0FFFFFFFu;
+
+    if (v > 0x219083u) {
+        if (v > 0x22F083u) {
+            if (v > 0xA00ED83u) {
+                if (v == 0xA20DD83u)
+                    return "TC3XX_MINIMCDS";
+                if (v != 0xA20ED83u)
+                    return (v == 0xA30ED83u) ? "TC4XX" : "UNKNOWN";
+                return "TC3XX_ED";
+            }
+            if (v == 0xA00ED83u)
+                return "TC2XX_ED";
+            if (v != 0x230083u) {
+                if (v != 0x231083u)
+                    return (v == 0xA00DD83u) ? "TC2XX_MINIMCDS" : "UNKNOWN";
+                return "TC4Ex";
+            }
+            return "TC4Zx";
+        }
+        if (v > 0x21D083u) {
+            if (v == 0x21E083u)
+                return "TC49xA";
+            if (v != 0x225083u)
+                return (v == 0x22B083u) ? "TC49xN" : "UNKNOWN";
+            return "TC4Dx";
+        }
+        if (v == 0x21D083u)
+            return "TC48x";
+        if (v != 0x21A083u) {
+            if (v != 0x21B083u)
+                return (v == 0x21C083u) ? "TC46x" : "UNKNOWN";
+            return "TC45x";
+        }
+        return "TC44x";
+    }
+    if (v == 0x219083u)
+        return "TC42x";
+    if (v > 0x206083u) {
+        if (v > 0x20A083u) {
+            if (v == 0x20B083u)
+                return "TC33x/32x";
+            if (v != 0x20C083u)
+                return (v == 0x215083u) ? "TC3Ex" : "UNKNOWN";
+            return "TC33xED";
+        }
+        if (v == 0x20A083u)
+            return "TC35x";
+        if (v != 0x207083u) {
+            if (v != 0x208083u)
+                return (v == 0x209083u) ? "TC36x" : "UNKNOWN";
+            return "TC37xED";
+        }
+        return "TC37x";
+    }
+    if (v == 0x206083u)
+        return "TC38x";
+    if (v > 0x200083u) {
+        if (v == 0x201083u)
+            return "TC22x";
+        if (v != 0x202083u)
+            return (v == 0x205083u) ? "TC39x" : "UNKNOWN";
+        return "TC21x";
+    }
+    if (v == 0x200083u)
+        return ed ? "TC23xED" : "TC23x";
+    if (v != 0x1DA083u) {
+        if (v == 0x1E8083u)
+            return ed ? "TC26xED" : "TC26x";
+        if (v == 0x1E9083u)
+            return ed ? "TC29xED" : "TC29x";
+        return "UNKNOWN";
+    }
+    return ed ? "TC27xED" : "TC27x";
+}
+
+/* lean device access helpers (no error string churn) */
+static mcdsl_return_et dev_read(uint32_t addr, uint32_t *v)
+{
+    tas_rw_item it;
+    uint8_t pe = 0;
+    int rc;
+
+    memset(&it, 0, sizeof(it));
+    it.addr_map = TAS_AM0;
+    it.addr = addr;
+    it.num_bytes = 4;
+    it.data = (uint8_t *)v;
+    rc = tas_rw_exec(&g.conn, &it, 1, g.con.pl0_max_num_rw, &pe);
+    if (rc == 0 && it.ok)
+        return MCDSL_RET_SUCCESS;
+    if (rc == 0)
+        return MCDSL_RET_DEVICE_DATA;
+    return (rc == -1 || rc == -2) ? MCDSL_RET_TOOL_HW_CONNECTION
+                                  : MCDSL_RET_DEVICE_DATA;
+}
+
+static mcdsl_return_et dev_write(uint32_t addr, uint32_t v)
+{
+    tas_rw_item it;
+    uint8_t pe = 0;
+    int rc;
+
+    memset(&it, 0, sizeof(it));
+    it.addr_map = TAS_AM0;
+    it.addr = addr;
+    it.num_bytes = 4;
+    it.is_write = 1;
+    it.data = (uint8_t *)&v;
+    rc = tas_rw_exec(&g.conn, &it, 1, g.con.pl0_max_num_rw, &pe);
+    if (rc == 0 && it.ok)
+        return MCDSL_RET_SUCCESS;
+    if (rc == 0)
+        return MCDSL_RET_DEVICE_DATA;
+    return (rc == -1 || rc == -2) ? MCDSL_RET_TOOL_HW_CONNECTION
+                                  : MCDSL_RET_DEVICE_DATA;
+}
+
+static mcdsl_return_et dev_read_block(uint32_t addr, uint8_t *buf, uint32_t n)
+{
+    tas_rw_item it;
+    uint8_t pe = 0;
+    int rc;
+
+    memset(&it, 0, sizeof(it));
+    it.addr_map = TAS_AM0;
+    it.addr = addr;
+    it.num_bytes = n;
+    it.data = buf;
+    rc = tas_rw_exec(&g.conn, &it, 1, g.con.pl0_max_num_rw, &pe);
+    if (rc == 0 && it.ok)
+        return MCDSL_RET_SUCCESS;
+    if (rc == 0)
+        return MCDSL_RET_DEVICE_DATA;
+    return (rc == -1 || rc == -2) ? MCDSL_RET_TOOL_HW_CONNECTION
+                                  : MCDSL_RET_DEVICE_DATA;
+}
+
+static void close_trace_file(void)
+{
+    if (g.trace_file != NULL) {
+        fclose(g.trace_file);
+        g.trace_file = NULL;
+    }
+}
+
+/* the MCDS clock measurement (reference recorder_measure_mcds_freq: read
+ * 0xC0100 via the server internal map 15; a value below 2 MHz is replaced
+ * by the 80 MHz default). */
+static void measure_mcds_freq(void)
+{
+    tas_rw_item it;
+    uint8_t pe = 0;
+    uint32_t f = 0;
+
+    memset(&it, 0, sizeof(it));
+    it.addr_map = TAS_AM15;
+    it.addr = MCDSRL_FREQ_REG;
+    it.num_bytes = 4;
+    it.data = (uint8_t *)&f;
+    if (tas_rw_exec(&g.conn, &it, 1, g.con.pl0_max_num_rw, &pe) != 0 || !it.ok)
+        return;
+    if (f < MCDSRL_FREQ_MIN) {
+        f = MCDSRL_FREQ_DEFAULT;
+        memset(&it, 0, sizeof(it));
+        it.addr_map = TAS_AM15;
+        it.addr = MCDSRL_FREQ_REG;
+        it.num_bytes = 4;
+        it.is_write = 1;
+        it.data = (uint8_t *)&f;
+        tas_rw_exec(&g.conn, &it, 1, g.con.pl0_max_num_rw, &pe);
+    }
+    g.freq_hz = (float)f;
+}
+
+/* the .mcds text header (reference trace_file_write_header) */
+static void trace_file_write_header(void)
+{
+    struct tm tmv;
+    uint32_t i;
+    int ed = (g.mcdsc.hdr.mcds_device == 0xA00ED83u);
+
+    _localtime64_s(&tmv, &g.rec_time);
+    fprintf(g.trace_file, "McdsDevice=%.32s\n",
+            device_id_to_name_long(g.mcdsc.hdr.mcds_device, 0));
+    fprintf(g.trace_file, "McdsDeviceUsed=0x%8.8X  (%.32s)\n",
+            (unsigned)g.mcdsc.hdr.device_type,
+            device_id_to_name_long(g.mcdsc.hdr.device_type, ed));
+    fprintf(g.trace_file, "McdsToolUsed=\"%.64s\"\n",
+            (g.n_targets > 0) ? g.targets[0].identifier : "");
+    if (g.freq_hz > 1000000.0f)
+        fprintf(g.trace_file, "McdsFrequencyMHz=%.1f\n",
+                (double)(g.freq_hz / 1000000.0f));
+    fprintf(g.trace_file, "RecordingDate=%4.4d-%2.2d-%2.2d\n",
+            tmv.tm_year + 1900, tmv.tm_mon + 1, tmv.tm_mday);
+    fprintf(g.trace_file, "RecordingTime=%2.2d:%2.2d:%2.2d\n",
+            tmv.tm_hour, tmv.tm_min, tmv.tm_sec);
+    fprintf(g.trace_file, "START_OF_MCDS_CONFIG\n");
+    for (i = 0; i < g.mcdsc.hdr.num_reg; i++)
+        fprintf(g.trace_file, "%8.8X %8.8X\n",
+                (unsigned)g.mcdsc.d[i],
+                (unsigned)g.mcdsc.d[g.mcdsc.hdr.vsi + i]);
+    fflush(g.trace_file);
+}
 
 mcdsl_return_et mcdsrl_set_mcdsconfig(const mcdsl_mcdsc_st *mcdsc,
                                       const mcdsl_mcdsc_st *mcdsc_cleanup)
 {
-    (void)mcdsc;
-    (void)mcdsc_cleanup;
-    return err_set(MCDSL_RET_FUNCTION_NOT_SUPPORTED,
-                   "Function is not supported by library");
+    uint32_t i, num, vsi;
+
+    if (mcdsc == NULL || mcdsc_cleanup == NULL)
+        return err_set(MCDSL_RET_FUNCTION_USED_WRONGLY,
+                       "mcdsconfig is NULL");
+    num = mcdsc->hdr.num_reg;
+    vsi = mcdsc->hdr.vsi;
+    if (num > MCDSL_MCDSC_MAX_NUM_REG || vsi > 2 * MCDSL_MCDSC_MAX_NUM_REG ||
+        vsi + num > 2 * MCDSL_MCDSC_MAX_NUM_REG)
+        return err_set(MCDSL_RET_PARAM_VALUE_NOT_SUPPORTED,
+                       "mcdsconfig register arrays out of range");
+
+    /* the reference compacts the copy: the values are placed directly
+     * after the addresses (vsi := num_reg) */
+    memset(&g.mcdsc, 0, sizeof(g.mcdsc));
+    g.mcdsc.hdr = mcdsc->hdr;
+    for (i = 0; i < num; i++) {
+        g.mcdsc.d[i] = mcdsc->d[i];
+        g.mcdsc.d[num + i] = mcdsc->d[vsi + i];
+    }
+    g.mcdsc.hdr.vsi = num;
+    memset(&g.mcdsc_cleanup, 0, sizeof(g.mcdsc_cleanup));
+    g.mcdsc_cleanup.hdr = mcdsc_cleanup->hdr;
+    {
+        uint32_t cnum = mcdsc_cleanup->hdr.num_reg;
+        uint32_t cvsi = mcdsc_cleanup->hdr.vsi;
+
+        for (i = 0; i < cnum; i++) {
+            g.mcdsc_cleanup.d[i] = mcdsc_cleanup->d[i];
+            g.mcdsc_cleanup.d[cnum + i] = mcdsc_cleanup->d[cvsi + i];
+        }
+        g.mcdsc_cleanup.hdr.vsi = cnum;
+    }
+    g.cleanup_set = 1;
+
+    /* derive the MCDS parameters (reference FUN_180005c40, class 1 path:
+     * the register windows and the FIFO base/top from the config) */
+    g.fifo_base = 0;
+    g.fifo_top = 0;
+    g.trace_max_kb = 0;
+    g.mcds_present = 0;
+    for (i = 0; i < num; i++) {
+        uint32_t a = g.mcdsc.d[i];
+        uint32_t v = g.mcdsc.d[num + i];
+
+        if ((a & 0xFFFFFF00u) == g.mcds_ctrl_base) {
+            if ((a & 0xFFu) == 0x20u && v != 0)
+                g.mcds_present = 1;         /* the MCDS-ID marker */
+        } else if ((a & 0xFFFF8000u) == g.mcds_status_base) {
+            uint32_t off = a & 0x7FFFu;
+
+            if (off == 0x204u)
+                g.fifo_base = v & 0xFFFFF000u;
+            else if (off == 0x208u)
+                g.fifo_top = v;
+        }
+    }
+    if (g.fifo_top > g.fifo_base)
+        g.trace_max_kb = ((g.fifo_top - g.fifo_base) + 1) >> 10;
+    if (!g.mcds_present && g.trace_max_kb == 0)
+        return err_set(MCDSL_RET_PARAM_VALUE_NOT_SUPPORTED,
+                       "No EMEM configuration found in MCDS configuration");
+    g.cfg_set = 1;
+    err_clear();
+    return MCDSL_RET_SUCCESS;
 }
 
 mcdsl_return_et mcdsrl_set_trace_buf(uint8_t *trace_buf,
                                      uint32_t max_trace_size_kb)
 {
-    (void)trace_buf;
-    (void)max_trace_size_kb;
-    return err_set(MCDSL_RET_FUNCTION_NOT_SUPPORTED,
-                   "Function is not supported by library");
+    g.trace_buf = trace_buf;
+    g.trace_buf_kb = max_trace_size_kb;
+    if (g.trace_file != NULL)
+        return err_set(MCDSL_RET_FUNCTION_USED_WRONGLY,
+                       "Open trace file exists");
+    if (max_trace_size_kb < 4)
+        return err_set(MCDSL_RET_PARAM_VALUE_NOT_SUPPORTED,
+                       "Minimum buffer size is 4 kByte");
+    err_clear();
+    return MCDSL_RET_SUCCESS;
 }
 
 mcdsl_return_et mcdsrl_open_trace_file(const mcd_char_t *trace_file_name)
 {
-    (void)trace_file_name;
-    return err_set(MCDSL_RET_FUNCTION_NOT_SUPPORTED,
-                   "Function is not supported by library");
+    if (trace_file_name == NULL)
+        return err_set(MCDSL_RET_FUNCTION_USED_WRONGLY,
+                       "trace_file_name is NULL");
+    g.trace_buf = NULL;
+    g.trace_buf_kb = 0;
+    close_trace_file();
+    g.trace_file = fopen(trace_file_name, "wb");
+    if (g.trace_file == NULL)
+        return err_set(MCDSL_RET_ERROR_TRACE_FILE,
+                       "Could not open trace file");
+    strncpy(g.trace_file_name, trace_file_name,
+            sizeof(g.trace_file_name) - 1);
+    err_clear();
+    return MCDSL_RET_SUCCESS;
 }
 
 mcdsl_return_et mcdsrl_start_recording(const mcdsrl_trace_state_st *stop_at)
 {
-    (void)stop_at;
-    return err_set(MCDSL_RET_FUNCTION_NOT_SUPPORTED,
-                   "Function is not supported by library");
+    uint32_t n, v = 0;
+    uint16_t nok = 0;
+    mcdsl_return_et r;
+
+    g.trace_size_kb = 0;
+    g.elapsed_ms = 0;
+    if (stop_at != NULL) {
+        g.stop_size_kb = stop_at->trace_size_kb;
+        g.stop_time_ms = stop_at->recording_time_ms;
+        g.stop_gaps = stop_at->num_trace_gaps;
+    } else {
+        g.stop_size_kb = 0;
+        g.stop_time_ms = 0;
+        g.stop_gaps = 0;
+    }
+
+    if (!g.device_connected)
+        return err_set(MCDSL_RET_FUNCTION_USED_WRONGLY,
+                       "No device connected");
+    if (!g.cfg_set)
+        return err_set(MCDSL_RET_FUNCTION_USED_WRONGLY,
+                       "Set mcdsconfig first");
+    if (g.need_stop)
+        return err_set(MCDSL_RET_FUNCTION_USED_WRONGLY,
+                       "Call mcdsrl_stop_recording() before calling "
+                       "mcdsrl_start_recording again");
+
+    /* the HAR variant: the last config pair must start CPU0 */
+    if (g.mcdsc.hdr.crsv == 2 && g.mcdsc.hdr.num_reg > 0) {
+        uint32_t lasta = g.mcdsc.d[g.mcdsc.hdr.num_reg - 1];
+
+        if (lasta != MCDSRL_CPU0_START_A && lasta != MCDSRL_CPU0_START_B)
+            return err_set(MCDSL_RET_FUNCTION_USED_WRONGLY,
+                           "Reset requested but last write in MCDS config "
+                           "does not start CPU0");
+        /* (the reference also verifies the HAR device state here;
+         * implemented as pass-through for now - calibrate in M23-3) */
+    }
+
+    /* the OCS check: the MCDS must be in the clean state */
+    r = dev_read(g.mcds_ctrl_base + MCDSRL_OFF_OCS, &v);
+    if (r == MCDSL_RET_SUCCESS && v != 0)
+        return err_set(MCDSL_RET_DEVICE_DATA,
+                       "MCDS init state is not as expected (OCS register). "
+                       "Possible causes:\n1. The last session terminated "
+                       "without calling mcdsrl_stop_recording()\nThis can be "
+                       "resolved by a device reset.\n2. Another tool or SW "
+                       "configured MCDS");
+
+    /* the PD check (class > 2 devices only - not the TC2xx miniMCDS) */
+    if (g.device_class > 2 &&
+        g.con_connected.device_type != 0x21E083u) {
+        r = dev_read(g.mcds_status_base + 0x101014u, &v);
+        if (r == MCDSL_RET_SUCCESS && (v & 0x30000000u) == 0x30000000u)
+            return err_set(MCDSL_RET_DEVICE_DATA,
+                           "The device is a PD which supports only one "
+                           "trace session after reset.\nPlease apply a "
+                           "reset, before starting a new trace");
+    }
+
+    /* the non-continuous stop limits must be 0 */
+    if (g.stop_size_kb != 0)
+        return err_set(MCDSL_RET_FUNCTION_USED_WRONGLY,
+                       "trace_state_stop_at.trace_size_kb must be 0 if "
+                       "trace mode is not continuous");
+    if (g.stop_gaps != 0)
+        return err_set(MCDSL_RET_FUNCTION_USED_WRONGLY,
+                       "trace_state_stop_at.num_trace_gaps must be 0 if "
+                       "trace mode is not continuous");
+
+    measure_mcds_freq();
+
+    /* the 0x310/0x30F special sequence (the reference; the TC2xx ED
+     * devices need the auxiliary clock ungate around the CPU start) */
+    if (((g.device_id_short - 0x310u) & 0xFEFFu) == 0) {
+        dev_write(0xFA006000u, 0);
+        v = 0xEEEEEEEEu;
+        if (dev_read(0xFA006000u, &v) == MCDSL_RET_SUCCESS && v != 0) {
+            dev_write(0xF000047Cu, 0xC0u);
+            dev_write(0xFA006000u, 0);
+            dev_write(0xF000047Cu, 0x40u);
+        }
+    }
+
+    /* the trace file header */
+    if (g.trace_file != NULL) {
+        _time64(&g.rec_time);
+        trace_file_write_header();
+    }
+
+    /* the config write: for the HAR variant the last pair is excluded and
+     * written separately (it starts the CPU0 / the trace) */
+    n = g.mcdsc.hdr.num_reg;
+    if (g.mcdsc.hdr.crsv == 2)
+        n -= 1;
+    if (n > 0) {
+        r = mcdsrl_write_list(g.mcdsc.d, &g.mcdsc.d[g.mcdsc.hdr.vsi],
+                              (uint16_t)n, &nok);
+        if (r != MCDSL_RET_SUCCESS)
+            return r;
+    }
+    if (g.mcdsc.hdr.crsv == 2 && g.mcdsc.hdr.num_reg > 0) {
+        uint32_t last = g.mcdsc.hdr.num_reg - 1;
+
+        r = mcdsrl_write(g.mcdsc.d[last],
+                         g.mcdsc.d[g.mcdsc.hdr.vsi + last]);
+        if (r != MCDSL_RET_SUCCESS)
+            return r;
+    }
+
+    g.started = 1;
+    g.need_stop = 1;
+    g.stop_done = 0;
+    g.start_ms = GetTickCount64();
+    err_clear();
+    return MCDSL_RET_SUCCESS;
+}
+
+/* the trace readback (reference FUN_1800034c0): the final size from the
+ * trace size register, the readback from the fixed trace port address in
+ * 1 KB blocks, then the buffer or the "START_OF_TDR" + raw into the file */
+static mcdsl_return_et trace_readback(void)
+{
+    uint32_t v = 0, size_kb, read_kb, i, nread = 0, cap_kb = 0;
+    uint8_t *buf = NULL;
+    int own = 0;
+    mcdsl_return_et r;
+
+    if (g.trace_file == NULL && g.trace_buf == NULL)
+        return MCDSL_RET_SUCCESS;
+
+    r = dev_read(g.mcds_ctrl_base + MCDSRL_OFF_TRACE_SIZE, &v);
+    if (r == MCDSL_RET_SUCCESS)
+        size_kb = (((v & 0xFFFFu) * 0x20u) + 0x4FFu) >> 10;
+    else
+        size_kb = g.trace_size_kb;
+
+    if (g.trace_file != NULL) {
+        cap_kb = (g.trace_max_kb != 0) ? g.trace_max_kb : size_kb;
+        if (cap_kb == 0)
+            cap_kb = 4;
+        buf = (uint8_t *)malloc((size_t)cap_kb << 10);
+        if (buf == NULL)
+            return err_set(MCDSL_RET_UNKNOWN_ERROR, "Out of memory");
+        own = 1;
+    } else {
+        cap_kb = g.trace_buf_kb;
+        buf = g.trace_buf;
+    }
+
+    /* the read size: the trace size plus the 1/32 block overhead */
+    read_kb = ((size_kb + 0x1Fu) >> 5) + size_kb;
+    if (read_kb > cap_kb)
+        read_kb = cap_kb;
+    if (read_kb == 0) {
+        if (own)
+            free(buf);
+        close_trace_file();
+        return err_set(MCDSL_RET_DEVICE_DATA, "No trace data available");
+    }
+
+    for (i = 0; i < read_kb; i++) {
+        r = dev_read_block(g.mcds_ctrl_base + MCDSRL_OFF_TRACE_PORT,
+                           buf + ((size_t)i << 10), 0x400u);
+        if (r != MCDSL_RET_SUCCESS) {
+            if (own)
+                free(buf);
+            close_trace_file();
+            return r;
+        }
+        nread += 0x400u;
+    }
+    g.trace_size_kb = (nread + 0x3FFu) >> 10;
+
+    if (g.trace_file != NULL) {
+        fprintf(g.trace_file, "START_OF_TDR\n");
+        fwrite(buf, 1, nread, g.trace_file);
+        close_trace_file();
+    }
+    if (own)
+        free(buf);
+    return MCDSL_RET_SUCCESS;
+}
+
+/* the shared state machine (reference recorder_get_recstate_impl) */
+static mcdsl_return_et recstate_impl(mcdsrl_recstate_et *recstate,
+                                     mcdsrl_trace_state_st *trace_state,
+                                     int stop_flag)
+{
+    uint32_t v = 0;
+    mcdsl_return_et r;
+
+    *recstate = MCDSRL_RECSTATE_UNKNOWN;
+    if (!g.device_connected) {
+        if (trace_state != NULL) {
+            trace_state->trace_size_kb = 0;
+            trace_state->recording_time_ms = 0;
+            trace_state->num_trace_gaps = 0;
+        }
+        close_trace_file();
+        return err_set(MCDSL_RET_FUNCTION_USED_WRONGLY,
+                       "No device connected");
+    }
+    if (trace_state != NULL) {
+        trace_state->trace_size_kb = g.trace_size_kb;
+        trace_state->recording_time_ms = g.elapsed_ms;
+        trace_state->num_trace_gaps = 0;
+    }
+    if (!g.started) {
+        *recstate = MCDSRL_RECSTATE_IDLE;
+        close_trace_file();
+        err_clear();
+        return MCDSL_RET_SUCCESS;
+    }
+
+    g.elapsed_ms = (uint32_t)(GetTickCount64() - g.start_ms);
+
+    /* the stop: the explicit flag or the recording time limit */
+    if (stop_flag || (g.stop_time_ms != 0 && g.elapsed_ms >= g.stop_time_ms)) {
+        r = dev_write(g.mcds_ctrl_base + MCDSRL_OFF_TRACE_CTRL,
+                      MCDSRL_TRACE_STOP_VAL);
+        if (r != MCDSL_RET_SUCCESS) {
+            close_trace_file();
+            return r;
+        }
+    }
+
+    /* the progress (the FIFO fill level) */
+    if (dev_read(g.mcds_status_base + MCDSRL_OFF_FIFO_FILL, &v) ==
+            MCDSL_RET_SUCCESS &&
+        v >= g.fifo_base)
+        g.trace_size_kb = ((v - g.fifo_base) + 0x3FFu) >> 10;
+
+    if (stop_flag || (g.stop_time_ms != 0 && g.elapsed_ms >= g.stop_time_ms)) {
+        /* the stop completed: read the trace back and end the recording */
+        g.started = 0;
+        r = trace_readback();
+        *recstate = MCDSRL_RECSTATE_IDLE;
+        if (trace_state != NULL) {
+            trace_state->trace_size_kb = g.trace_size_kb;
+            trace_state->recording_time_ms = g.elapsed_ms;
+            trace_state->num_trace_gaps = 0;
+        }
+        if (r != MCDSL_RET_SUCCESS)
+            return r;
+        err_clear();
+        return MCDSL_RET_SUCCESS;
+    }
+
+    /* the running state (the simplified trigger decode; the reference
+     * derives it from the MCDS status register) */
+    *recstate = (g.trace_size_kb > 0) ? MCDSRL_RECSTATE_POST_TRIG
+                                      : MCDSRL_RECSTATE_PRE_TRIG;
+    if (trace_state != NULL) {
+        trace_state->trace_size_kb = g.trace_size_kb;
+        trace_state->recording_time_ms = g.elapsed_ms;
+        trace_state->num_trace_gaps = 0;
+    }
+    err_clear();
+    return MCDSL_RET_SUCCESS;
 }
 
 mcdsl_return_et mcdsrl_get_recstate(mcdsrl_recstate_et *recstate,
                                     mcdsrl_trace_state_st *trace_state)
 {
-    (void)recstate;
-    (void)trace_state;
-    return err_set(MCDSL_RET_FUNCTION_NOT_SUPPORTED,
-                   "Function is not supported by library");
+    if (recstate == NULL || trace_state == NULL)
+        return err_set(MCDSL_RET_FUNCTION_USED_WRONGLY,
+                       "invalid recstate parameters");
+    return recstate_impl(recstate, trace_state, 0);
 }
 
 mcdsl_return_et mcdsrl_get_data_from_fifo(uint8_t *trace_buf,
@@ -747,14 +1374,55 @@ mcdsl_return_et mcdsrl_get_data_from_fifo(uint8_t *trace_buf,
 {
     (void)trace_buf;
     (void)trace_size_kb_max;
-    (void)trace_size_kb;
+    if (trace_size_kb != NULL)
+        *trace_size_kb = 0;
+    /* continuous streaming trace only; the miniMCDS does not provide it */
     return err_set(MCDSL_RET_FUNCTION_NOT_SUPPORTED,
                    "Function is not supported by library");
 }
 
 mcdsl_return_et mcdsrl_stop_recording(mcdsrl_trace_state_st *trace_state)
 {
-    (void)trace_state;
-    return err_set(MCDSL_RET_FUNCTION_NOT_SUPPORTED,
-                   "Function is not supported by library");
+    mcdsrl_recstate_et rs = MCDSRL_RECSTATE_UNKNOWN;
+    uint16_t nok = 0;
+    mcdsl_return_et r;
+
+    if (!g.device_connected) {
+        if (trace_state != NULL) {
+            trace_state->trace_size_kb = 0;
+            trace_state->recording_time_ms = 0;
+            trace_state->num_trace_gaps = 0;
+        }
+        close_trace_file();
+        return err_set(MCDSL_RET_FUNCTION_USED_WRONGLY,
+                       "No device connected");
+    }
+    if (!g.stop_done) {
+        /* the first call does the work (the reference g_stop_called) */
+        g.stop_done = 1;
+        g.need_stop = 0;
+        r = recstate_impl(&rs, trace_state, 1);
+        if (r != MCDSL_RET_SUCCESS)
+            return r;
+        /* the cleanup config sequence */
+        if (g.cleanup_set && g.mcdsc_cleanup.hdr.num_reg > 0) {
+            r = mcdsrl_write_list(g.mcdsc_cleanup.d,
+                                  &g.mcdsc_cleanup.d[g.mcdsc_cleanup.hdr.vsi],
+                                  (uint16_t)g.mcdsc_cleanup.hdr.num_reg,
+                                  &nok);
+            if (r != MCDSL_RET_SUCCESS)
+                return r;
+        }
+        close_trace_file();
+        err_clear();
+        return MCDSL_RET_SUCCESS;
+    }
+    /* the repeated call returns the cached state */
+    if (trace_state != NULL) {
+        trace_state->trace_size_kb = g.trace_size_kb;
+        trace_state->recording_time_ms = g.elapsed_ms;
+        trace_state->num_trace_gaps = 0;
+    }
+    err_clear();
+    return MCDSL_RET_SUCCESS;
 }

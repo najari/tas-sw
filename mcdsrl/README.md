@@ -18,8 +18,33 @@
 | 디바이스 | `qry_devices`·`connect_device`·`device_connected`·`disconnect_device`·`reset_device` | TAS 열거/세션/DC + **ED 프로브**(EMEM 0x50000000 읽기!) |
 | RW | `read`·`write`·`read_list`·`write_list`·`read_block`·`write_block`·`read_timestamped` | PL0 아이템 + mcdsl_return_et 매핑 |
 
-녹화 7함수(`set_mcdsconfig`·`set_trace_buf`·`open_trace_file`·`start/stop_recording`·`get_recstate`·
-`get_data_from_fifo`)는 **M23-2 예정** (현재 FUNCTION_NOT_SUPPORTED 스텁).
+## M23-2 구현 — 녹화 (2026-10-18)
+
+녹화 7함수 구현 완료 (22/22!): `set_mcdsconfig`(압축 복사+파라미터 도출)·`set_trace_buf`·
+`open_trace_file`·`start_recording`(HAR 마지막 쌍 분리·OCS/PD 검사·0x310 시퀀스·**`.mcds`
+텍스트 헤더**!)·`get_recstate`·`stop_recording`(**트레이스 리드백** — 고정 포트 1KB×N +
+cleanup write_list!)·`get_data_from_fifo`(연속 전용 → 미지원).
+
+- `.mcds` 포맷: `McdsDevice`/`McdsDeviceUsed`/`McdsToolUsed`/`McdsFrequencyMHz`/`RecordingDate`/
+  `RecordingTime` + `START_OF_MCDS_CONFIG` + (addr,value) 쌍 + `START_OF_TDR` + raw
+- 검증 도구: `tests/mcdsrl_record.cpp`(CCL 정본 흐름!) · `tests/map_probe.cpp`(접근 매트릭스)
+
+### ⚠ MCDS 접근 하드웨어 블로커 (실측 규명 — 원본도 동일 실패!)
+
+이 구성(DAS JTAG AURDUINO)에서는 **MCDS 레지스터 접근(map 1, 0xF00E6xxx/8xxx)이 불가능**
+(서버 응답 0x8D 버스 에러) — **원본 recorder도 동일 지점에서 실패**("Write of addr F00E6000
+in addr_map 1 failed"):
+
+| 경로 | 결과 |
+|---|---|
+| map 1 MCDS 레지스터 (RD32/RD64/WR) | 전부 실패 ✗ |
+| map 15 MCDS 레지스터 (RD32/RD64/WR) | 전부 실패 ✗ |
+| **map 15 0x50000090 (RD64)** | **성공 ✓ — MCDS 타임스탬프 카운터 (유일한 MCDS 접근)** |
+| map 0 EMEM (0x50000000/0x50100000/0xAF000000) | 읽기 성공 ✓ (트레이스 RAM 뷰) |
+
+기각된 가설: 웨이크업 순서·세션명·DeviceQry 예비 세션·NativeJtagMode=false config·2023
+`mcds_recorder_das.dll`(TC27xED 미지원). → 어댑터/서버 측 MCDS 지원 문제로 판정.
+MCDS 레지스터가 열리면 우리 recorder는 원본과 동일 프로토콜로 즉시 동작(프레임 대조 완료).
 
 ## 원본 교차 검증 (스모크 양쪽 실행)
 

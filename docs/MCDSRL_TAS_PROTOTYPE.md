@@ -22,9 +22,23 @@ Infineon **MCDS Recorder Library 3.3.0.0**(`mcd_recorder.dll`)의 **API 호환 �
 - 검증: 스모크(양쪽 DLL 동일 실행) — device/cplty/타임스탬프 카운터 전부 일치 ·
   `SMOKE OK (0)` ×2 — 증거 [m23_dropin/](../m23_dropin/) (smoke 2종·ts 프레임 대조)
 
-## 다음 — M23-2 (녹화 7함수)
+## M23-2 — 녹화 7함수 구현 + 하드웨어 블로커 규명 (2026-10-18)
 
-- `set_mcdsconfig`(저장 + start 시 일괄 `write_list` + **마지막 쌍 분리** = 트레이스 시작!) ·
-  `start_recording`(OCS/PD/HAR 검사 + 초기화 시퀀스) · `stop_recording`(cleanup + 상태) · `get_recstate`
-- **트레이스 리드백**: `read_block(base+0x100000, 1KB)` 루프 (디컴파일 규명 — base = 디바이스별 MCDS 베이스)
-- `.mcds` 파일: `"McdsFrequencyMHz=%.1f\n\n"` + raw (CCL 정본) → **원본 디코더로 교차 검증**
+- **구현 완료 (22/22!)**: `set_mcdsconfig`·`set_trace_buf`·`open_trace_file`·`start_recording`·
+  `get_recstate`·`stop_recording`·`get_data_from_fifo` — 원본 디컴파일 대조 (HAR 마지막 쌍 분리·
+  OCS/PD 검사·0x310 시퀀스·트레이스 리드백(고정 포트 1KB×N)·cleanup write_list!)
+- **`.mcds` 텍스트 헤더** 규명 (원본 `trace_file_write_header` 대조): `McdsDevice`/`McdsDeviceUsed`/
+  `McdsToolUsed`/`McdsFrequencyMHz`/`RecordingDate`/`RecordingTime` + `START_OF_MCDS_CONFIG` +
+  (addr,value) 쌍 + `START_OF_TDR` + raw
+- 검증 스모크-2: CCL 정본 흐름(`CclDevice.record()`) — [원본 configurator config 생성] + reset(HAR) +
+  open/set/start/poll/stop. config 실측: num_reg 43·crsv 2·mcds_device 0x0A00ED83
+- **블로커**: 이 구성(DAS JTAG AURDUINO)에서 **MCDS 레지스터 접근(map 1, 0xF00E6xxx)이 0x8D(버스
+  에러)로 전면 차단 — 원본 recorder도 동일 실패** ("Write of addr F00E6000 in addr_map 1 failed").
+  유일한 MCDS 접근 = map15 RD64 타임스탬프 카운터(0x50000090) ✓; EMEM(map0) 읽기 ✓. 접근 매트릭스:
+  [m23b_dropin/](../m23b_dropin/) (원본/우리 실패 로그·map 프로브). 어댑터/서버 측 지원 문제로 판정
+  (웨이크업·세션명·NativeJtagMode config·2023 das 변형 전부 기각!)
+
+## 다음 — M23-3 (파일/디코더·CCL 드롭인)
+
+- 어댑터 측 MCDS 접근 해결 여부에 종속. 해결 시: 우리 recorder로 녹화 → `.mcds` →
+  원본 디코더(`mcdsdl_mcds_file_load`) 교차 검증 → MTV/CCL 드롭인.

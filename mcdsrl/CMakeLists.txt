@@ -24,7 +24,22 @@ target_include_directories(mcdsrl_smoke PRIVATE
 )
 target_compile_definitions(mcdsrl_smoke PRIVATE _CRT_SECURE_NO_WARNINGS)
 
+add_executable(mcdsrl_record tests/mcdsrl_record.cpp)
+target_include_directories(mcdsrl_record PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+target_compile_definitions(mcdsrl_record PRIVATE _CRT_SECURE_NO_WARNINGS)
+
+add_executable(map_probe tests/map_probe.cpp src/tas_client.cpp)
+target_include_directories(map_probe PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_compile_definitions(map_probe PRIVATE _CRT_SECURE_NO_WARNINGS)
+target_link_libraries(map_probe PRIVATE ws2_32)
+
 if(MSVC)
     target_compile_options(mcdsrl_tas PRIVATE /W3)
     target_compile_options(mcdsrl_smoke PRIVATE /W3)
+    target_compile_options(mcdsrl_record PRIVATE /W3)
+    target_compile_options(map_probe PRIVATE /W3)
 endif()
