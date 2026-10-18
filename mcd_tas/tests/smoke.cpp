@@ -51,6 +51,7 @@ typedef mcd_return_et (*pfn_qry_rst_classes)(const mcd_core_st *, uint32_t *);
 typedef mcd_return_et (*pfn_qry_rst_class_info)(const mcd_core_st *, uint8_t, mcd_rst_info_st *);
 typedef mcd_return_et (*pfn_execute_txlist)(const mcd_core_st *, mcd_txlist_st *);
 typedef mcd_return_et (*pfn_qry_state)(const mcd_core_st *, mcd_core_state_st *);
+typedef mcd_return_et (*pfn_step)(const mcd_core_st *, mcd_bool_t, mcd_core_step_type_et, uint32_t);
 typedef mcd_return_et (*pfn_qry_reg_groups)(const mcd_core_st *, uint32_t, uint32_t *, mcd_register_group_st *);
 typedef mcd_return_et (*pfn_qry_reg_map)(const mcd_core_st *, uint32_t, uint32_t, uint32_t *, mcd_register_info_st *);
 
@@ -137,6 +138,9 @@ int main(int argc, char **argv)
     int regmap = 0;
     int stepexp = 0;
     int stepgo = 0;
+    int step = 0;
+    uint32_t stepn = 1;
+    int fd10 = 0;
     uint32_t core_sel = 0;
     mcd_return_et r;
     uint32_t n;
@@ -163,12 +167,18 @@ int main(int argc, char **argv)
             stepexp = 1;
         if (strcmp(argv[i], "--stepgo") == 0)
             stepgo = 1;
+        if (strcmp(argv[i], "--step") == 0)
+            step = 1;
+        if (strcmp(argv[i], "--steps") == 0 && i + 1 < (uint32_t)argc)
+            stepn = (uint32_t)atoi(argv[++i]);
+        if (strcmp(argv[i], "--fd10") == 0)
+            fd10 = 1;
         if (strcmp(argv[i], "--core") == 0 && i + 1 < (uint32_t)argc)
             core_sel = (uint32_t)atoi(argv[++i]);
     }
 
     printf("== mcd_tas smoke test ==\n");
-    printf("dll: %s\ncfg: %s\nmode: %s%s%s%s%s%s%s%s%s\ncore: %u\n\n", dll, cfg ? cfg : "(default)",
+    printf("dll: %s\ncfg: %s\nmode: %s%s%s%s%s%s%s%s%s%s\ncore: %u\n\n", dll, cfg ? cfg : "(default)",
            attach ? "with core attach (--attach)" : "read-only",
            runstop ? " + run/stop (--runstop)" : "",
            rst ? " + reset (--rst)" : "",
@@ -179,6 +189,7 @@ int main(int argc, char **argv)
            regmap ? " + reg map dump (--regmap)" : "",
            stepexp ? (stepgo ? " + step experiment (--stepexp --stepgo)"
                              : " + step experiment read-only (--stepexp)") : "",
+           step ? " + mcd_step_f call (--step)" : "",
            (unsigned)core_sel);
 
     h = LoadLibraryA(dll);
@@ -223,6 +234,7 @@ int main(int argc, char **argv)
     LOADFN(h, pfn_qry_rst_class_info, f_rstclassinfo, "mcd_qry_rst_class_info_f");
     LOADFN(h, pfn_execute_txlist, f_txlist,   "mcd_execute_txlist_f");
     LOADFN(h, pfn_qry_state,    f_state,      "mcd_qry_state_f");
+    LOADFN(h, pfn_step,         f_step,       "mcd_step_f");
     LOADFN(h, pfn_qry_reg_groups, f_reggroups, "mcd_qry_reg_groups_f");
     LOADFN(h, pfn_qry_reg_map,  f_regmap,     "mcd_qry_reg_map_f");
     printf("all exports resolved\n\n");
@@ -552,6 +564,67 @@ int main(int argc, char **argv)
                                    (unsigned)dbgsr1, (unsigned)pc1);
                         }
                     }
+                }
+
+                /* M22: mcd_step_f call (--step) — drives the loaded DLL's
+                 * step implementation (reference DLL = real step; ours =
+                 * stub).  Reads around the call plus a safety stop. */
+                if (step) {
+                    uint32_t csfr = 0xF8810000u + 0x20000u * core_sel;
+                    uint32_t dbgsr0 = 0, pc0 = 0, dbgsr1 = 0, pc1 = 0;
+
+                    printf("  -- M22 mcd_step_f call (--step, n_steps=%u) --\n",
+                           (unsigned)stepn);
+                    read_word32(f_txlist, core, csfr + 0xFD00u, &dbgsr0);
+                    read_word32(f_txlist, core, csfr + 0xFE08u, &pc0);
+                    printf("       before: DBGSR 0x%08X  PC 0x%08X\n",
+                           (unsigned)dbgsr0, (unsigned)pc0);
+                    r = f_step(core, TRUE, MCD_CORE_STEP_TYPE_INSTR, stepn);
+                    {
+                        mcd_error_info_st ei;
+                        f_err(core, &ei);
+                        printf("       mcd_step_f rc %d code 0x%08x '%s'\n",
+                               (int)r, (unsigned)ei.error_code, ei.error_str);
+                    }
+                    Sleep(150);
+                    read_word32(f_txlist, core, csfr + 0xFD00u, &dbgsr1);
+                    read_word32(f_txlist, core, csfr + 0xFE08u, &pc1);
+                    printf("       after:  DBGSR 0x%08X  PC 0x%08X (delta %d)\n",
+                           (unsigned)dbgsr1, (unsigned)pc1, (int)(pc1 - pc0));
+                    if ((dbgsr1 & 2u) == 0) {
+                        printf("       [safety] core not halted -> DBGSR<-6\n");
+                        write_word32(f_txlist, core, csfr + 0xFD00u, 6);
+                        Sleep(150);
+                        read_word32(f_txlist, core, csfr + 0xFD00u, &dbgsr1);
+                        read_word32(f_txlist, core, csfr + 0xFE08u, &pc1);
+                        printf("       after safety stop: DBGSR 0x%08X  PC 0x%08X\n",
+                               (unsigned)dbgsr1, (unsigned)pc1);
+                    }
+                }
+
+                /* M22 experiment: probe the DBGSR.SUSP bit writability and
+                 * the reference debug-init register 0xF881FD10. */
+                if (fd10) {
+                    uint32_t csfr = 0xF8810000u + 0x20000u * core_sel;
+                    uint32_t d0 = 0, d1 = 0, d2 = 0, f0 = 0, f1 = 0;
+
+                    printf("  -- M22 fd10/susp experiment --\n");
+                    read_word32(f_txlist, core, csfr + 0xFD00u, &d0);
+                    read_word32(f_txlist, core, csfr + 0xFD10u, &f0);
+                    printf("       before: DBGSR 0x%08X  FD10 0x%08X\n",
+                           (unsigned)d0, (unsigned)f0);
+                    write_word32(f_txlist, core, csfr + 0xFD00u, 0x0000100Bu);
+                    read_word32(f_txlist, core, csfr + 0xFD00u, &d1);
+                    printf("       after DBGSR<-0x100B: DBGSR 0x%08X\n",
+                           (unsigned)d1);
+                    write_word32(f_txlist, core, csfr + 0xFD10u, 0x2Au);
+                    read_word32(f_txlist, core, csfr + 0xFD10u, &f1);
+                    printf("       after FD10<-0x2A:   FD10 0x%08X\n",
+                           (unsigned)f1);
+                    write_word32(f_txlist, core, csfr + 0xFD00u, d0);
+                    read_word32(f_txlist, core, csfr + 0xFD00u, &d2);
+                    printf("       restored DBGSR 0x%08X (was 0x%08X)\n",
+                           (unsigned)d2, (unsigned)d0);
                 }
 
                 /* M20: local SPR window translation (--spr).  The

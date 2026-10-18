@@ -59,11 +59,31 @@ build\Release\tas_probe.exe [host] [port]
 `mcd_open_core_f` `mcd_close_core_f` `mcd_qry_mem_spaces_f` `mcd_execute_txlist_f`
 `mcd_qry_state_f` `mcd_qry_max_payload_size_f`
 
-나머지 9개는 `MCD_RET_ACT_HANDLE_ERROR` + `MCD_ERR_FN_UNIMPLEMENTED` + 함수명 메시지를 반환합니다
-(`mcd_qry_error_info_f`로 조회 가능): `run_until`·`step`·`execute_command`,
+나머지 8개는 `MCD_RET_ACT_HANDLE_ERROR` + `MCD_ERR_FN_UNIMPLEMENTED` + 함수명 메시지를 반환합니다
+(`mcd_qry_error_info_f`로 조회 가능): `run_until`·`execute_command`,
 CHL 5종(open/send/receive/reset/close), `qry_input_handle`
 — 이 중 CHL 5종+`qry_input_handle`은 **원본도 스텁/미export**라 파리티.
-(run/stop **M16** · reset **M17** · 트리거 **M18** · trace·잔여 캘리브레이션 **M19** · SPR 변환 **M20** — 아래 섹션)
+(run/stop **M16** · reset **M17** · 트리거 **M18** · trace·잔여 캘리브레이션 **M19** · SPR 변환 **M20** ·
+**step M22** — 아래 섹션)
+
+## M22 구현 — `step` 실구현 + run 접근 HW 시퀀스 (2026-10-18)
+
+- **Frida(WS2_32) 캡처로 원본 시퀀스 확보** — M21에서 "DAS 다이얼렉트 필요"로 결론지었던 항목을
+  REA Frida로 원본 트래픽을 직접 캡처해 해결(프레임 대조: `m22_dropin/step_frames.txt`)
+- **원본 step 시퀀스**: [디버그 초기화(트리거 유닛 8개 + DBGSR..+0xF 영소거 + `FD10←0x2A` — 한 프레임)] →
+  [`0xF0000494←0x8000003E`(어댑터 싱글스텝 모드)] → [`DBGSR←4`] → [`0xF0000494←0x8000003F`] → [초기화 재실행]
+  → 1명령 실행 후 재정지(DBGSR `0x100B`, SUSP=1)
+- `mcd_step_f` 실구현: 정지 선확인·`step_type`(INSTR/CUSTOM_LO..HI) 검증·초기화(한 PL0 프레임, WRBLK 사용)·
+  어댑터 브래킷·DBGSR←4 ×n_steps·정지 재확인 — 문구는 원본 정본("Stepping failed. Core is not in debug state"·
+  "Core did not complete single step")
+- **M22b — run**: 어댑터 시퀀스 추가([0494←3E→DBGSR=4→0494←3F→DBGSR=4→**`0x049C←2`(RUN 명령)**]) —
+  SUSP(디버거 홀드) 상태의 코어도 재개 가능(기존 DBGSR 단독 쓰기로는 불가였던 케이스)
+- 검증: smoke `--step`(우리/원본 **동일 동작** — 1명령 델타 +2~+22(분기 포함))·`--steps 4`·회귀 전량 OK·
+  **GUI(원본 클라이언트 + 우리 DLL): Step ×3(IP 0x8003A142→A146→A15C)·Run(Running)·Stop(Debug)** ✓
+  — DBGSR 영소거 창의 1회성 "Read failure" 표시는 M16/M6 캘리브레이션과 동일(자동 복구)
+- 배포: `drop_in\mcdxdas.dll` = SHA256 `9C6F0D51B8B0ED23…` (M22)
+- 환경 노트: 조사 중 어댑터 **Native JTAG Mode** 고착(디바이스 식별 실패) — 원본 DLL +
+  config `McdAccHw.NativeJtagMode=false` open으로 복구(강제 서버 킬 직후 발생 — 정상 종료 권장)
 
 ## M20 구현 — SPR 로컬→전역 변환 (2026-10-18)
 
@@ -142,21 +162,13 @@ CHL 5종(open/send/receive/reset/close), `qry_input_handle`
   (화면: `gui_test\m17*.png` · 로그: `drop_in\client_stderr35/36.log`)
 - 배포: `drop_in\mcdxdas.dll` = SHA256 `29A1573B735F71A8…` (M17b)
 
-## step·run_until 조사 결과 (2026-10-18, M21 갱신)
+## step·run_until 조사 결과 (2026-10-18, M22에서 step 해결)
 
-- **`mcd_step_f`(싱글스텝) — 원본 메커니즘 규명(M21)**:
-  - 원본 시퀀스(REA 정적 + 실측): 정지 상태 확인 → **FE60(CSFR+0xFE60) bit0 처리** →
-    **DBGSR(CSFR+0xFD00) ← 4** (count회) → 정지 재확인(`"Core did not complete single step"`).
-    API는 `mcd_step_f(core, global, step_type, count)` — INSTR(0x2)/CUSTOM_LO(0x100+)만 지원.
-  - 레지스터 R/W는 세션 상태별 **두 다이얼렉트**: state 3/4 = PL0(0x2x, 우리 경로) ·
-    state 1/2 = **≥0x40 DAS 고유 아이템(0x84+opcode)** — 원본의 디버그 접근은 DAS 다이얼렉트로 나감.
-  - **GO 실험(승인 하)**: 우리 PL0 경로의 DBGSR←4 = **싱글스텝 아님**(홀드 해제/프리런) — 실측.
-    안전 정지(DBGSR←6) 정상 ✓. 최종 상태 Debug 복원.
-  - 결론: step 구현은 **DAS 다이얼렉트(≥0x40 아이템/opcode) 구현**이 필요(프레임 빌더 RE + 서버 실험,
-    신규 서브프로젝트급). 대안(불완전): 트리거 기반 소프트웨어 스텝(비분기 명령만 성립).
-  - 부수: 원본 "debug state"는 DBGSR.HALT=00b(디버거 홀드 `0x1001`)일 수 있음 — 우리 `qry_state`는
-    이 경우 RUNNING으로 오판 가능(0x1003=DBGSR 정지는 양쪽 일치).
-  - 도구: smoke `--stepexp`(읽기 전용)/`--stepgo`(GO) — 증거 `m21_dropin/`
+- **`mcd_step_f`(싱글스텝) — 실구현 완료(M22)**:
+  - 원본 시퀀스(Frida 캡처): 디버그 초기화(트리거 윈도 + DBGSR 영소거 + FD10) → 어댑터 `0494←3E` →
+    `DBGSR←4` → `0494←3F` → 초기화 재실행 — 1명령 실행 후 재정지(SUSP 복귀).
+  - M21의 "DAS 다이얼렉트 필요" 결론은 **어댑터 시퀀스 누락**이 원인이었음(acc_mode 불필요 — 일반 PL0 경로).
+  - 도구: smoke `--step`/`--steps N` — 증거 `m22_dropin/`
 - `mcd_run_until_f`: 대상 시간 소스(`qry_current_time`) 미확보 — 동일 계열 후속.
 
 ## M18 구현 — 트리거(브레이크포인트) (2026-10-18)
@@ -434,8 +446,8 @@ CHL 5종(open/send/receive/reset/close), `qry_input_handle`
   실측 완료; Run(HALT=00b) 실관찰 캘리브레이션은 타깃 상태 전환 승인 필요.
 - 메모리 공간 1개(AM0, id=1 잠정). 캐시/가상 공간·메모리 블록은 미노출.
 - `mcd_execute_txlist_f` 중단 시 이미 전송된 프레임은 취소 불가(서버가 전량 실행) — 집계 결과만 중단 시점 기준.
-- 트리거(M18)·리셋(M17)·run/stop(M16)은 실구현; 채널/trace API는 원본도 미구현(파리티 스텁),
-  `step`/`run_until`은 미구현(DAP 필요).
+- 트리거(M18)·리셋(M17)·run/stop(M16)·**step(M22)**은 실구현; 채널/trace API는 원본도 미구현(파리티 스텁),
+  `run_until`은 미구현(시간 소스 부재).
 - 스레드 안전성: 단일 전역 임계구역으로 직렬화(재진입 없음).
 - 매핑 상수(TC27x 이름, core_id 등)는 잠정 — 실 `mcdxdas.dll`과 교차 캘리브레이션 TODO.
 

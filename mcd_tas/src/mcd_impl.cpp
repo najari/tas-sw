@@ -2561,6 +2561,115 @@ static mcd_return_et csfr_read(mcd_core_slot_t *cs, uint32_t off,
                    (unsigned)pe);
 }
 
+/* ------------------------------------------------------------------ */
+/* M22: access HW (DAS/AURDUINO adapter) control registers.
+ *
+ * The adapter holds the core in a debug/suspend state; the reference
+ * driver brackets debug operations with its control register writes
+ * (captured from mcdxdas 1.14.12, TC27x):
+ *   0xF0000494 <- 0x8000003E   single-step mode on (hold after one insn)
+ *   0xF0000494 <- 0x8000003F   normal mode (also written at attach)
+ *   0xF000049C <- 2            run command (releases a suspended core)
+ */
+#define MCD_TAS_ADAPTER_CPU_CTRL 0xF0000494ull
+#define MCD_TAS_ADAPTER_RUN_CMD  0xF000049Cull
+#define MCD_TAS_ADAPTER_STEP_ON  0x8000003Eu
+#define MCD_TAS_ADAPTER_STEP_OFF 0x8000003Fu
+
+/* Access HW control register write. */
+static mcd_return_et adapter_write(mcd_core_slot_t *cs, uint64_t addr,
+                                   uint32_t value, const char *fn)
+{
+    tas_rw_item it;
+    uint8_t pe = 0;
+    int rc;
+
+    memset(&it, 0, sizeof(it));
+    it.addr_map = TAS_AM0;
+    it.addr = addr;
+    it.num_bytes = 4;
+    it.is_write = 1;
+    it.data = (uint8_t *)&value;
+    rc = tas_rw_exec(&cs->conn, &it, 1, cs->con.pl0_max_num_rw, &pe);
+    if (rc == 0 && it.ok)
+        return MCD_RET_ACT_NONE;
+
+    return err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_TXLIST_TX,
+                   "%s: access HW register @0x%08llX write failed "
+                   "(rc %d, pl0_err 0x%02x)", fn,
+                   (unsigned long long)addr, rc, (unsigned)pe);
+}
+
+/* Reference debug init (captured from mcdxdas 1.14.12, TC27x): disable all
+ * OCDS trigger units (TRxEVT/TRxADR), clear the DBGSR..DBGSR+0xF block and
+ * write the debug configuration register 0xFD10 - all items in ONE PL0
+ * frame, exactly like the reference.  The reference step brackets its
+ * clear-halt write with this sequence (before and after). */
+static mcd_return_et step_debug_init(mcd_core_slot_t *cs, const char *fn,
+                                     int full)
+{
+    static uint32_t trig_init[16] = {
+        0x00002000u, 0xFFFFFFFFu, 0x00002000u, 0xFFFFFFFFu,
+        0x00002000u, 0xFFFFFFFFu, 0x00002000u, 0xFFFFFFFFu,
+        0x00002000u, 0xFFFFFFFFu, 0x00002000u, 0xFFFFFFFFu,
+        0x00002000u, 0xFFFFFFFFu, 0x00002000u, 0xFFFFFFFFu,
+    };
+    static uint32_t trig_init2[16] = {
+        0x00003002u, 0x00000000u, 0x00000000u, 0xFFFFFFFFu,
+        0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u,
+        0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u,
+        0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u,
+    };
+    static uint32_t dbgsr_zero[4] = { 0u, 0u, 0u, 0u };
+    static uint32_t fd10_val = 0x2Au;
+    tas_rw_item items[4];
+    uint32_t n = 0, i;
+    uint8_t pe = 0;
+    int rc;
+
+    memset(items, 0, sizeof(items));
+    items[n].addr_map = TAS_AM0;
+    items[n].addr = (uint64_t)trig_csfr_base(cs) + 0xF000u;
+    items[n].num_bytes = 64;
+    items[n].is_write = 1;
+    items[n].data = (uint8_t *)trig_init;
+    n++;
+    items[n].addr_map = TAS_AM0;
+    items[n].addr = (uint64_t)trig_csfr_base(cs) + 0xFD00u;
+    items[n].num_bytes = 16;
+    items[n].is_write = 1;
+    items[n].data = (uint8_t *)dbgsr_zero;
+    n++;
+    items[n].addr_map = TAS_AM0;
+    items[n].addr = (uint64_t)trig_csfr_base(cs) + 0xFD10u;
+    items[n].num_bytes = 4;
+    items[n].is_write = 1;
+    items[n].data = (uint8_t *)&fd10_val;
+    n++;
+    if (full) {
+        items[n].addr_map = TAS_AM0;
+        items[n].addr = (uint64_t)trig_csfr_base(cs) + 0xF000u;
+        items[n].num_bytes = 64;
+        items[n].is_write = 1;
+        items[n].data = (uint8_t *)trig_init2;
+        n++;
+    }
+
+    rc = tas_rw_exec(&cs->conn, items, n, cs->con.pl0_max_num_rw, &pe);
+    if (rc == 0) {
+        for (i = 0; i < n; i++) {
+            if (!items[i].ok)
+                break;
+        }
+        if (i == n)
+            return MCD_RET_ACT_NONE;
+    }
+
+    return err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_TXLIST_TX,
+                   "%s: debug init write failed (rc %d, pl0_err 0x%02x)",
+                   fn, rc, (unsigned)pe);
+}
+
 static mcd_return_et run_stop_common(const mcd_core_st *core,
                                      mcd_bool_t global, int do_run)
 {
@@ -2580,6 +2689,27 @@ static mcd_return_et run_stop_common(const mcd_core_st *core,
         r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_CONNECTION,
                     "%s: no TAS device session", fn);
     } else {
+        /* M22b: reference run sequence - the access HW brackets the
+         * clear-halt with its single-step/normal mode and finishes with
+         * the run command.  This also releases a core that is suspended
+         * (e.g. after a reference step or debugger attach), where the
+         * plain DBGSR write alone does not resume it. */
+        if (do_run) {
+            mcd_return_et r2;
+
+            r = adapter_write(cs, MCD_TAS_ADAPTER_CPU_CTRL,
+                              MCD_TAS_ADAPTER_STEP_ON, fn);
+            if (r == MCD_RET_ACT_NONE)
+                r = dbgsr_write(cs, MCD_TAS_DBGSR_WR_RUN, fn);
+            r2 = adapter_write(cs, MCD_TAS_ADAPTER_CPU_CTRL,
+                               MCD_TAS_ADAPTER_STEP_OFF, fn);
+            if (r == MCD_RET_ACT_NONE)
+                r = r2;
+            if (r == MCD_RET_ACT_NONE)
+                r = dbgsr_write(cs, MCD_TAS_DBGSR_WR_RUN, fn);
+            if (r == MCD_RET_ACT_NONE)
+                r = adapter_write(cs, MCD_TAS_ADAPTER_RUN_CMD, 2u, fn);
+        }
         /* The addressed core always; with global != 0 also every other
          * attached core slot (MCD 'global' group semantics). */
         for (k = 0; k < MCD_MAX_CORE_SLOTS; k++) {
@@ -2702,11 +2832,134 @@ mcd_return_et mcd_qry_current_time_f(const mcd_core_st *core,
     return r;
 }
 
+/* ------------------------------------------------------------------ */
+/* M22: single step.
+ *
+ * Reference sequence captured from mcdxdas 1.14.12 (TC27x, WS2_32 trace
+ * of mcd_step_f): the access HW holds the core in single-step mode while
+ * the CPU receives the clear-halt request:
+ *   1. access HW 0xF0000494 <- 0x8000003E   (single-step mode on)
+ *   2. DBGSR (CSFR+0xFD00) <- 4             (once per step)
+ *   3. access HW 0xF0000494 <- 0x8000003F   (normal mode, always)
+ * The core executes one instruction and halts again.  The reference
+ * requires the core to be halted first ("Stepping failed. Core is not in
+ * debug state") and verifies the halted state afterwards ("Core did not
+ * complete single step").  Step types: INSTR and CUSTOM_LO..HI only.
+ * (adapter_write and the adapter register defines live above
+ * run_stop_common, which shares them for the run sequence.) */
 mcd_return_et mcd_step_f(const mcd_core_st *core, mcd_bool_t global,
                          mcd_core_step_type_et step_type, uint32_t n_steps)
 {
-    (void)core; (void)global; (void)step_type; (void)n_steps;
-    STUB_ENTER("mcd_step_f")
+    mcd_return_et r = MCD_RET_ACT_NONE;
+    mcd_core_slot_t *cs;
+    uint32_t i, v = 0;
+
+    (void)global;   /* reference: single step on the addressed core */
+
+    mcd_lock();
+    err_clear();
+
+    cs = core_slot_from(core);
+    if (cs == NULL) {
+        r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
+                    "mcd_step_f: unknown core handle");
+        mcd_unlock();
+        return r;
+    }
+    if (!cs->attached) {
+        r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_CONNECTION,
+                    "mcd_step_f: no TAS device session");
+        mcd_unlock();
+        return r;
+    }
+    if (step_type != MCD_CORE_STEP_TYPE_INSTR &&
+        !(step_type >= MCD_CORE_STEP_TYPE_CUSTOM_LO &&
+          step_type <= MCD_CORE_STEP_TYPE_CUSTOM_HI)) {
+        r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
+                    "mcd_step_f: only MCD_CORE_STEP_TYPE_INSTR and "
+                    "MCD_CORE_STEP_TYPE_CUSTOM_LO are supported");
+        mcd_unlock();
+        return r;
+    }
+    if (n_steps == 0) {
+        mcd_unlock();
+        return MCD_RET_ACT_NONE;
+    }
+
+    /* precondition: the core must be in the debug (halted) state */
+    r = csfr_read(cs, 0xFD00u, &v, "mcd_step_f");
+    if (r != MCD_RET_ACT_NONE) {
+        mcd_unlock();
+        return r;
+    }
+    if ((v & 2u) == 0) {
+        r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_GENERAL,
+                    "mcd_step_f: Stepping failed. Core is not in debug state");
+        mcd_unlock();
+        return r;
+    }
+
+    /* The reference step brackets the clear-halt write with its
+     * attach-time debug init (captured): disable all OCDS trigger units,
+     * clear the DBGSR..DBGSR+0xF block and write the debug configuration
+     * register 0xFD10.  Without this the clear-halt write below is
+     * consumed as a plain resume instead of a single step. */
+    r = step_debug_init(cs, "mcd_step_f", 1);
+    if (r != MCD_RET_ACT_NONE) {
+        mcd_unlock();
+        return r;
+    }
+
+    /* 1. arm access HW single-step mode */
+    r = adapter_write(cs, MCD_TAS_ADAPTER_CPU_CTRL, MCD_TAS_ADAPTER_STEP_ON,
+                      "mcd_step_f");
+    if (r != MCD_RET_ACT_NONE) {
+        mcd_unlock();
+        return r;
+    }
+
+    /* 2. clear-halt request, once per step */
+    for (i = 0; i < n_steps; i++) {
+        r = csfr_write(cs, 0xFD00u, 4u, "mcd_step_f");
+        if (r != MCD_RET_ACT_NONE)
+            break;
+    }
+
+    /* 3. restore access HW mode (always) */
+    {
+        mcd_return_et r2 = adapter_write(cs, MCD_TAS_ADAPTER_CPU_CTRL,
+                                         MCD_TAS_ADAPTER_STEP_OFF,
+                                         "mcd_step_f");
+        if (r == MCD_RET_ACT_NONE)
+            r = r2;
+    }
+    if (r != MCD_RET_ACT_NONE) {
+        mcd_unlock();
+        return r;
+    }
+
+    /* the reference repeats the debug init after the step */
+    r = step_debug_init(cs, "mcd_step_f", 0);
+    if (r != MCD_RET_ACT_NONE) {
+        mcd_unlock();
+        return r;
+    }
+
+    /* verify: the core halts again after the instruction(s) - poll briefly
+     * (each CSFR read is a full round trip) */
+    for (i = 0; i < 20; i++) {
+        if (csfr_read(cs, 0xFD00u, &v, "mcd_step_f") != MCD_RET_ACT_NONE)
+            break;
+        if ((v & 2u) != 0)
+            break;
+    }
+    if ((v & 2u) == 0) {
+        r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_GENERAL,
+                    "mcd_step_f: Core did not complete single step");
+    }
+    /* the core stays in the debug/halted state (reference: no event) */
+    mcd_unlock();
+    return r;
 }
 
 mcd_return_et mcd_set_global_f(const mcd_core_st *core, mcd_bool_t enable)
