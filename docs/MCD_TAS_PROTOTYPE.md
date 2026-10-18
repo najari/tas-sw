@@ -6,8 +6,8 @@ TasServer(24817) 백엔드로** 구동하는 프로토타입 DLL(`mcd_tas.dll`)�
 - 구현 소스(C++)는 `mcd_tas/`(본 저장소 포함, M6부터 공개) — 검증 로그·증거는 마일스톤 폴더(`mNN_dropin/`).
 - 프로토콜 근거: ① 본 저장소 캡처 해독 [TAS_PROTOCOL_CAPTURE.md](TAS_PROTOCOL_CAPTURE.md) §8
   ② 공식 `tas_client_api` 소스(`tas_pkt.h`, `tas_pkt_handler_rw.cpp`, `tas_client_server_con.cpp`) — 양쪽 상호 일치 확인.
-- 원칙: **읽기 전용 기본** — Run/Stop은 M16에서 실구현(사용 승인 하 상태 변경·검증 완료);
-  Step/Reset/트리거 생성/CHL은 미구현(스텁).
+- 원칙: **읽기 전용 기본** — Run/Stop(M16)·Reset(M17)·트리거(M18)는 사용 승인 하 실구현·검증 완료;
+  `step`/`run_until`은 미구현(스텁, DAP 필요), CHL/trace API는 원본도 미구현(파리티 스텁).
 
 ## 0. 상태 요약
 
@@ -30,6 +30,7 @@ TasServer(24817) 백엔드로** 구동하는 프로토타입 DLL(`mcd_tas.dll`)�
 | M17 | reset 실구현 — DEVICE_CONNECT 재전송(0x0003 → 필요시 run 해제)·DBGSR 재판독 검증(M17b: DE 비트 수정) | **완료·검증(§3-Q)** — 리셋 벡터(0xA0000020)·GUI Reset/Reset-and-Halt/Stop 전 구간 |
 | M18 | 트리거(브레이크포인트) 실구현 — OCDS TR0..TR7 직접 프로그래밍(PC/데이터·단일/범위·halt) | **완료·검증(§3-R)** — PC 일치 정지(EVTSRC=TR0EVT)·GUI IP Trigger 전 라이프사이클 |
 | M19 | trace·잔여 함수 원본 교차 캘리브레이션 — 원본 DLL 직접 프로브(신규) | **완료·검증(§3-S)** — 12/12 라인 완전 일치(trace 무음 오류·core_modes 2종·max_payload 16384·trig_info) |
+| M20 | SPR 로컬→전역 변환 — 로컬 DSPR/PSPR 주소를 코어별 버스 별칭으로 해석(M15 잔여 GAP) | **완료·검증(§3-T)** — 수정 전 PL0 오류 → 수정 후 원본 파리티(읽기+쓰기) · GUI 로컬 주소 쓰기/읽기/복원 |
 
 ## 1. 구현 범위
 
@@ -351,6 +352,20 @@ trig_set_state 덤프)으로 원본 `mcdxdas.dll`의 레지스터 DB를 전량 �
 - **검증**: 원본 vs 우리 프로브 **12/12 라인 완전 일치** · smoke `--runstop`·`--rst`·`--trig` 회귀 ok ·
   GUI Run/Stop sanity — → [m19_dropin/](../m19_dropin/) (프로브 2종·GUI 화면·로그 발췌)
 
+### T. M20 — SPR 로컬→전역 변환 (M15 잔여 GAP) (2026-10-18)
+
+- **GAP**: 우리 DLL은 로컬 스크래치패드 주소(DSPR `0xD0000000`/PSPR `0xC0000000`)를 그대로 PL0에 실어
+  **버스 오류(PL0 0x8D)** — 원본(DAS)은 대상 코어 기준으로 해석(M12 실증 → M15 매핑 확정, 구현만 잔여)
+- **정본**: TC27x UM Table 5-10 — 코어별 `PSPR_base/DSPR_base`(0: `0x70100000/0x70000000` …
+  2: `0x50100000/0x50000000`) · 로컬은 항상 `C0000000/D0000000`; 윈도는 파워오브투(128K/32K)로
+  캐시 연속 매핑까지 커버(과소 변환만 위험)
+- **구현**: `mcd_execute_txlist_f` 스플릿 루프에서 코어별 변환(`spr_translate`) — 읽기/쓰기 공통,
+  `MCD_TAS_LOG`에 `local SPR ... -> bus ...` 라인
+- **검증**: smoke `--spr`(읽기): 수정 전 rc 3(0x2100) → 수정 후 rc 0·ok 2, **원본 1.14.12와 동일**;
+  `--sprw`(쓰기): 로컬 쓰기 → 버스 리드백 일치 → 원값 복원(원본 파리티) · 회귀 `--trace` ok
+- **GUI**(원본 클라이언트 + 우리 DLL): `0xD0000000` Write/Read → 리드백 `0x5AA55AA5`(M15 북엔드) →
+  복원 `0x00000000` — → [m20_dropin/](../m20_dropin/) (로그 6종·화면 3종·DLL 로그 발췌)
+
 ## 4. 구현 메모 (정본 근거)
 
 - **프레임 빌더** (`tas_pkt_handler_rw.cpp` 규칙, §8 실측과 일치):
@@ -399,6 +414,8 @@ trig_set_state 덤프)으로 원본 `mcdxdas.dll`의 레지스터 DB를 전량 �
   (CHL 5종+`qry_input_handle`은 원본도 스텁 — 파리티).
 - **M19(완료, 2026-10-18)**: trace·잔여 함수 원본 교차 캘리브레이션(§3-S) — 원본 DLL 직접 프로브 12/12 일치.
   잔여 차이(기록): 서버명 표기(`TasServer` vs `UDAS`)·미export 3종(우리는 API-정합 export)·NULL 인자 방어(우리만).
+- **M20(완료, 2026-10-18)**: SPR 로컬→전역 변환(§3-T) — M15 잔여 GAP 해소(로컬 DSPR/PSPR → 코어별
+  버스 별칭), 원본 파리티(읽기+쓰기) · GUI 로컬 주소 쓰기/읽기/복원. **aurixtracing 데몬 통합의 전제 조건.**
 - **다음**: 새 요구사항에 한함.
 
 ## 부록. 산출물
