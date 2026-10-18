@@ -1,0 +1,22 @@
+DeviceQry pre-session ok (targets 1)
+session ok, pl0_max_num_rw 32
+connected, device_type 0x401DA083
+
+== first access: map 0 @ 0x50000000 ==
+  map  0 @ 0x50000000 : rc  0 ok 1 pl0 0x00 value 0x00000000
+-- map 15 with RD64 (the counter pattern): --
+  map 15 @ 0x50000090 (RD64): rc  0 ok 1 pl0 0x00 value 0x00000000F31F8CEA
+  map 15 @ 0x50000000 (RD64): rc  0 ok 0 pl0 0x00 value 0xDEADBEEFDEADBEEF
+  map 15 @ 0x50000004 (RD64): rc  0 ok 0 pl0 0x00 value 0xDEADBEEFDEADBEEF
+  map 15 @ 0x50006000 (RD64): rc  0 ok 0 pl0 0x00 value 0xDEADBEEFDEADBEEF
+  map 15 @ 0x50006020 (RD64): rc  0 ok 0 pl0 0x00 value 0xDEADBEEFDEADBEEF
+  map 15 @ 0x50006034 (RD64): rc  0 ok 0 pl0 0x00 value 0xDEADBEEFDEADBEEF
+  map 15 @ 0x50008000 (RD64): rc  0 ok 0 pl0 0x00 value 0xDEADBEEFDEADBEEF
+  map 15 @ 0x50008018 (RD64): rc  0 ok 0 pl0 0x00 value 0xDEADBEEFDEADBEEF
+-- map 1 with RD64: --
+  map  1 @ 0xF00E6000 (RD64): rc  0 ok 0 pl0 0x00 value 0xDEADBEEFDEADBEEF
+  map  1 @ 0xF00E8000 (RD64): rc  0 ok 0 pl0 0x00 value 0xDEADBEEFDEADBEEF
+-- EMEM cross views (map 0): --
+  map  0 @ 0xAF000000 : rc  0 ok 1 pl0 0x00 value 0x00000000
+  map  0 @ 0x50100000 : rc  0 ok 1 pl0 0x00 value 0x00000000
+  map  0 @ 0x50000000 : rc  0 ok 1 pl0 0x00 value 0x00000000

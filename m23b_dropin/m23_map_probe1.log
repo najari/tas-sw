@@ -1,0 +1,28 @@
+session ok, pl0_max_num_rw 32
+connected, device_type 0x401DA083
+
+== map 1 (MCDS registers per the reference config) ==
+  map  1 @ 0xF00E6000 : rc  0 ok 0 pl0 0x00 value 0xDEADBEEF
+  map  1 @ 0xF00E6004 : rc  0 ok 0 pl0 0x00 value 0xDEADBEEF
+  map  1 @ 0xF00E6020 : rc  0 ok 0 pl0 0x00 value 0xDEADBEEF
+  map  1 @ 0xF00E6034 : rc  0 ok 0 pl0 0x00 value 0xDEADBEEF
+  map  1 @ 0xF00E8000 : rc  0 ok 0 pl0 0x00 value 0xDEADBEEF
+  map  1 @ 0xF00E8018 : rc  0 ok 0 pl0 0x00 value 0xDEADBEEF
+  map  1 @ 0xAF000000 : rc  0 ok 0 pl0 0x00 value 0xDEADBEEF
+
+== map 15 (server internal MCDS view) ==
+  map 15 @ 0x50000000 : rc  0 ok 0 pl0 0x00 value 0xDEADBEEF
+  map 15 @ 0x50000004 : rc  0 ok 0 pl0 0x00 value 0xDEADBEEF
+  map 15 @ 0x50000090 : rc  0 ok 0 pl0 0x00 value 0xDEADBEEF
+  map 15 @ 0x50100000 : rc  0 ok 0 pl0 0x00 value 0xDEADBEEF
+  map 15 @ 0x50006000 : rc  0 ok 0 pl0 0x00 value 0xDEADBEEF
+  map 15 @ 0x50008000 : rc  0 ok 0 pl0 0x00 value 0xDEADBEEF
+  map 15 @ 0x50006020 : rc  0 ok 0 pl0 0x00 value 0xDEADBEEF
+  map 15 @ 0x50006034 : rc  0 ok 0 pl0 0x00 value 0xDEADBEEF
+  map 15 @ 0x000C0100 : rc  0 ok 1 pl0 0x00 value 0x005B8D80
+
+== map 0 (target view) ==
+  map  0 @ 0xF00E6000 : rc  0 ok 0 pl0 0x00 value 0xDEADBEEF
+  map  0 @ 0x50000000 : rc  0 ok 1 pl0 0x00 value 0x00000000
+  map  0 @ 0xAF000000 : rc  0 ok 1 pl0 0x00 value 0x00000000
+  map  0 @ 0x9F000000 : rc  0 ok 0 pl0 0x00 value 0xDEADBEEF

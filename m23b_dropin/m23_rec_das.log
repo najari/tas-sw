@@ -1,0 +1,8 @@
+== mcdsrl recording smoke (M23-2) ==
+recorder: C:\work\ccl\ccl\CclLib\mcds_lib\mcds_recorder_das.dll
+out: C:\work\tas_server_analysis\m23_rec_das.mcds reset: 1
+
+  [ok]   mcdscl_lib_init(3)
+  [ok]   mcdsrl_lib_init(3)
+  [FAIL] mcdsrl_connect_device
+       error: Device has no on-chip trace HW

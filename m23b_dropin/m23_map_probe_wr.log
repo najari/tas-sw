@@ -1,0 +1,14 @@
+-- EMEM cross views (map 0): --
+  map  0 @ 0xAF000000 : rc  0 ok 1 pl0 0x00 value 0x00000000
+  map  0 @ 0x50100000 : rc  0 ok 1 pl0 0x00 value 0x00000000
+  map  0 @ 0x50000000 : rc  0 ok 1 pl0 0x00 value 0x00000000
+
+== MCDS enable write via map 15 (0x50006000 <- 0x10000) ==
+  WR map 15 @ 0x50006000 <- 0x00010000 : rc  0 ok 0 pl0 0x00
+  map 15 @ 0x50006000 : rc  0 ok 0 pl0 0x00 value 0xDEADBEEF
+  map 15 @ 0x50006000 (RD64): rc  0 ok 0 pl0 0x00 value 0xDEADBEEFDEADBEEF
+  map 15 @ 0x50006034 (RD64): rc  0 ok 0 pl0 0x00 value 0xDEADBEEFDEADBEEF
+  map  1 @ 0xF00E6000 : rc  0 ok 0 pl0 0x00 value 0xDEADBEEF
+
+== restore: reset (DC option 3) ==
+  reset+halt ok

@@ -1,0 +1,16 @@
+== mcdsrl recording smoke (M23-2) ==
+recorder: mcdsrl_tas.dll
+out: C:\work\tas_server_analysis\m23_rec_ours.mcds reset: 1
+
+  [ok]   mcdscl_lib_init(3)
+  [ok]   mcdsrl_lib_init(3)
+  [ok]   mcdsrl_connect_device
+       device 'TC27xED' type 0x401DA083
+  [ok]   mcdsrl_reset_device(halt)
+  [ok]   mcdscl_init(device_type)
+  [ok]   mcdscl_get_mcdsconfig
+       config: num_reg 43 crsv 2 device_type 0x401DA083 mcds_device 0x0A00ED83 vsi 43
+  [ok]   mcdsrl_open_trace_file
+  [ok]   mcdsrl_set_mcdsconfig
+  [FAIL] mcdsrl_start_recording
+       error: mcdsrl_write_list: 32 of 42 accesses failed (pl0_err=0x00)
