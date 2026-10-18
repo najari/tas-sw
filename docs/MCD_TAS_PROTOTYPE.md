@@ -28,10 +28,11 @@ TasServer(24817) 백엔드로** 구동하는 프로토타입 DLL(`mcd_tas.dll`)�
 | M12 | GUI Write 검증 (승인 하 타깃 메모리 쓰기) — LMU 스크래치 셀 쓰기/Read-back/원값 복원 + 원본 파리티 | **완료·검증(§3-O)** — `PL0_OK` · read-back 일치 · 최종 원값 복원 · 실패 모달 재규명(M6 정정) |
 | M16 | run/stop 실구현 — DBGSR 쓰기(run=0x4/stop=0x6)·내부 상태 모델·1회성 STOPPED 이벤트 + trig_set 성공 no-op | **완료·검증(§3-P)** — smoke 라이브(DBGSR 독립 재판독) + 원본 클라이언트 GUI Run/Stop 전 구간 |
 | M17 | reset 실구현 — DEVICE_CONNECT 재전송(0x0003 → 필요시 run 해제)·DBGSR 재판독 검증(M17b: DE 비트 수정) | **완료·검증(§3-Q)** — 리셋 벡터(0xA0000020)·GUI Reset/Reset-and-Halt/Stop 전 구간 |
+| M18 | 트리거(브레이크포인트) 실구현 — OCDS TR0..TR7 직접 프로그래밍(PC/데이터·단일/범위·halt) | **완료·검증(§3-R)** — PC 일치 정지(EVTSRC=TR0EVT)·GUI IP Trigger 전 라이프사이클 |
 
 ## 1. 구현 범위
 
-54개 함수 중 **실동작 24개 + 정직 고정응답 13개 + 성공 no-op 2개 + 스텁 15개**(미구현은 `MCD_ERR_FN_UNIMPLEMENTED` + 함수명 메시지, `mcd_qry_error_info_f`로 조회) — M17 기준.
+54개 함수 중 **실동작 33개 + 정직 고정응답 10개 + 스텁 11개**(미구현은 `MCD_ERR_FN_UNIMPLEMENTED` + 함수명 메시지, `mcd_qry_error_info_f`로 조회) — M18 기준. 스텁 11개 중 CHL 5종+`qry_input_handle`은 **원본 mcdxdas도 동일 스텁**(공용 스텁 `0x180001D30`)으로 파리티.
 
 - **M1 (11)**: `mcd_initialize_f` `mcd_exit_f` `mcd_qry_servers_f` `mcd_open_server_f` `mcd_close_server_f`
   `mcd_set_server_config_f` `mcd_qry_server_config_f` `mcd_qry_systems_f` `mcd_qry_devices_f`
@@ -42,6 +43,8 @@ TasServer(24817) 백엔드로** 구동하는 프로토타입 DLL(`mcd_tas.dll`)�
 - **M16 (2+2)**: `mcd_run_f` `mcd_stop_f` 실구현(DBGSR 쓰기) · `mcd_activate_trig_set_f`
   `mcd_remove_trig_set_f` 성공 no-op (트리거 세트는 항상 비어 있음 — 원본 클라이언트 Run 시퀀스 대응, §3-P)
 - **M17 (1)**: `mcd_rst_f` 실구현 — DC 0x0003(+필요시 run 해제) 재전송, DE=1 유지, DBGSR 재판독 검증(§3-Q)
+- **M18 (4+4)**: `mcd_create_trig_f` `mcd_qry_trig_f` `mcd_remove_trig_f` `mcd_qry_trig_state_f` 실구현
+  (OCDS TR0..TR7) + `qry_trig_info`·`qry_trig_set`·`qry_trig_set_state`·`remove_trig_set` 실데이터(§3-R)
 
 ### 1.1 M2 동작 요약
 
@@ -318,6 +321,19 @@ trig_set_state 덤프)으로 원본 `mcdxdas.dll`의 레지스터 DB를 전량 �
   (OCDS/DAP 경유; 원본은 vtable+0x160 내부 메서드). AM15(raw JTAG 프리미티브만)·DC 옵션·서버 문자열
   어디에도 노출 없음 → DAP/Cerberus 프로토콜의 AM15 raw JTAG 상 구현이 별도 서브프로젝트로 필요.
 
+### R. M18 — 트리거(브레이크포인트) 실구현 (2026-10-18)
+
+- **메커니즘**: OCDS 트리거 유닛 TR0..TR7 직접 프로그래밍(CPUx CSFR `TRxEVT 0xF000+8n`·`TRxADR 0xF004+8n`·
+  `TRIG_ACC 0xFD30`) — TRxEVT = `BOD|BBM|EVTA=Halt`(0x1A) + `TYP=PC`(0x1000)/`ALD`(read)/`AST`(write)
+  + 범위 시 `RNG`(0x2000) (TC1.6 UM §12.9 필드 검증; CCL 상수 0x1011은 EVTA=001 "관찰 전용"이라 정정)
+- 범위 트리거 = 짝수 유닛 + 상위 이웃(TR1ADR=끝주소); `qry_trig_state`는 TRIG_ACC 판독(클리어) 후 모델 래치
+- **smoke 검증**(`--attach --trig`): 브레이크포인트 @0x8003A160 → **PC=0x8003A160 정지·EVTSRC=16(TR0EVT)** ·
+  captured=1 · 제거 후 세트 비움 · 실패 0
+- **GUI 검증**: 클라이언트 Run 시퀀스 실측 = `remove_trig_set → create_trig×N → activate_trig_set → run`
+  (매 Run 재다운로드) — Run → **State Debug·IP 0x8003A160·"ACTIVE"** · 체크 해제 후 Run → 제거(1 cleared) → 정상
+  → [m18_dropin/](../m18_dropin/) (화면 3종·로그 발췌·smoke)
+- 부수: run 검증에서 트리거 히트 구분(브레이크포인트 레이스 오탐 방지)
+
 ## 4. 구현 메모 (정본 근거)
 
 - **프레임 빌더** (`tas_pkt_handler_rw.cpp` 규칙, §8 실측과 일치):
@@ -361,6 +377,9 @@ trig_set_state 덤프)으로 원본 `mcdxdas.dll`의 레지스터 DB를 전량 �
   smoke + GUI 전 구간 검증. **미구현 유지**: `rst`(→M17에서 구현)·`step`·`run_until`.
 - **M17(완료, 2026-10-18)**: reset 실구현(§3-Q) — DC 재전송·DBGSR 검증·DE 비트 수정(M17b).
   **미구현 유지**: `step`·`run_until`·트리거 생성·CHL/trace.
+- **M18(완료, 2026-10-18)**: 트리거 실구현(§3-R) — OCDS TR0..TR7·PC/데이터·범위·halt, GUI 전 라이프사이클.
+  **미구현 유지**: `step`·`run_until`(DAP 필요)·`execute_command`·`set_trace_state`·`read_trace`
+  (CHL 5종+`qry_input_handle`은 원본도 스텁 — 파리티).
 - **다음**: 새 요구사항에 한함.
 
 ## 부록. 산출물

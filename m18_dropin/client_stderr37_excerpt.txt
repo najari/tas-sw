@@ -1,0 +1,8 @@
+mcd_tas: CALL remove_trig_set (0 trigger(s) cleared)
+mcd_tas: create_trig: id 1 TR0 evt 0x0000101A addr 0x8003A160
+mcd_tas: CALL activate_trig_set (triggers armed on creation)
+mcd_tas: mcd_run_f: core halted by a trigger right after start (DBGSR=0x00001003, TRIG_ACC=0x00000001)
+mcd_tas: CALL remove_trig_set (1 trigger(s) cleared)
+mcd_tas: CALL activate_trig_set (triggers armed on creation)
+mcd_tas: mcd_run_f: DBGSR <- 0x00000004 -> RUNNING (core 0)
+mcd_tas: mcd_stop_f: DBGSR <- 0x00000006 -> DEBUG (core 0)
