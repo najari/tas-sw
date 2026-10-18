@@ -81,7 +81,11 @@ CHL 5종(open/send/receive/reset/close), `qry_input_handle`
 - GUI 검증(원본 `mcd_basic_client.exe` + 우리 DLL): 로컬 주소 `0xD0000000`으로 Write/Read —
   리드백 `0x5AA55AA5`(M15 북엔드 재현) → 원값 복원 `0x00000000` · DLL 로그에
   `local SPR 0xD0000000 -> bus 0x70000000 (core 0)` 실증
-- 배포: `drop_in\mcdxdas.dll` = SHA256 `919755FBAF32D19E…` (M20)
+- **M20b — reg_map 코어별 PC**(원본 교차): 전 코어 `0xF881FE08`(CPU0) 반환 → 코어별 CSFR 윈도
+  (`+0x20000*core`)로 수정 — 원본 실측: core1 `0xF883FE08`·core2 `0xF885FE08`,
+  **전 40개 항목 +0x20000 시프트(40/40 일치)** · 라이브 PC 읽기 core0/1/2 상이값
+  (`0x8003A142`/`0x8003A59A`/`0x80038E52`) · smoke `--regmap`/`--core N` 프로브 신규
+- 배포: `drop_in\mcdxdas.dll` = SHA256 `AE2AF7F7141AAB1D…` (M20b)
 
 ## M19 구현 — trace·잔여 함수 원본 교차 캘리브레이션 (2026-10-18)
 

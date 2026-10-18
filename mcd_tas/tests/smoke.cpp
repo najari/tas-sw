@@ -51,6 +51,8 @@ typedef mcd_return_et (*pfn_qry_rst_classes)(const mcd_core_st *, uint32_t *);
 typedef mcd_return_et (*pfn_qry_rst_class_info)(const mcd_core_st *, uint8_t, mcd_rst_info_st *);
 typedef mcd_return_et (*pfn_execute_txlist)(const mcd_core_st *, mcd_txlist_st *);
 typedef mcd_return_et (*pfn_qry_state)(const mcd_core_st *, mcd_core_state_st *);
+typedef mcd_return_et (*pfn_qry_reg_groups)(const mcd_core_st *, uint32_t, uint32_t *, mcd_register_group_st *);
+typedef mcd_return_et (*pfn_qry_reg_map)(const mcd_core_st *, uint32_t, uint32_t, uint32_t *, mcd_register_info_st *);
 
 static int g_fails = 0;
 #define CHK(cond, msg) do { \
@@ -105,6 +107,8 @@ int main(int argc, char **argv)
     int trace = 0;
     int spr = 0;
     int sprw = 0;
+    int regmap = 0;
+    uint32_t core_sel = 0;
     mcd_return_et r;
     uint32_t n;
     uint32_t i;
@@ -124,17 +128,23 @@ int main(int argc, char **argv)
             spr = 1;
         if (strcmp(argv[i], "--sprw") == 0)
             sprw = 1;
+        if (strcmp(argv[i], "--regmap") == 0)
+            regmap = 1;
+        if (strcmp(argv[i], "--core") == 0 && i + 1 < (uint32_t)argc)
+            core_sel = (uint32_t)atoi(argv[++i]);
     }
 
     printf("== mcd_tas smoke test ==\n");
-    printf("dll: %s\ncfg: %s\nmode: %s%s%s%s%s%s%s\n\n", dll, cfg ? cfg : "(default)",
+    printf("dll: %s\ncfg: %s\nmode: %s%s%s%s%s%s%s%s\ncore: %u\n\n", dll, cfg ? cfg : "(default)",
            attach ? "with core attach (--attach)" : "read-only",
            runstop ? " + run/stop (--runstop)" : "",
            rst ? " + reset (--rst)" : "",
            trig ? " + trigger (--trig)" : "",
            trace ? " + trace probe (--trace)" : "",
            spr ? " + SPR translation (--spr)" : "",
-           sprw ? " + SPR write check (--sprw)" : "");
+           sprw ? " + SPR write check (--sprw)" : "",
+           regmap ? " + reg map dump (--regmap)" : "",
+           (unsigned)core_sel);
 
     h = LoadLibraryA(dll);
     if (h == NULL) {
@@ -178,6 +188,8 @@ int main(int argc, char **argv)
     LOADFN(h, pfn_qry_rst_class_info, f_rstclassinfo, "mcd_qry_rst_class_info_f");
     LOADFN(h, pfn_execute_txlist, f_txlist,   "mcd_execute_txlist_f");
     LOADFN(h, pfn_qry_state,    f_state,      "mcd_qry_state_f");
+    LOADFN(h, pfn_qry_reg_groups, f_reggroups, "mcd_qry_reg_groups_f");
+    LOADFN(h, pfn_qry_reg_map,  f_regmap,     "mcd_qry_reg_map_f");
     printf("all exports resolved\n\n");
 
     /* 1. initialize (the client acts as a v1.1 "SPRINT Release" tool) */
@@ -273,13 +285,14 @@ int main(int argc, char **argv)
         /* 6b. M2: core attach + memory access (only with --attach) */
         if (!attach) {
             printf("  [skip] M2 core attach test (use --attach to include TAS DEVICE_CONNECT)\n");
-        } else if (ndev < 1 || ncore < 1) {
-            printf("  [skip] M2 core attach test (no core enumerated)\n");
+        } else if (ndev < 1 || ncore <= core_sel) {
+            printf("  [skip] M2 core attach test (core index %u not available, ncore %u)\n",
+                   (unsigned)core_sel, (unsigned)ncore);
         } else {
             mcd_core_st *core = NULL;
 
             printf("  NOTE: --attach performs TAS DEVICE_CONNECT (JTAG hot attach, no reset/halt)\n");
-            r = f_opencore(&cores[0], &core);
+            r = f_opencore(&cores[core_sel], &core);
             CHK(r == MCD_RET_ACT_NONE && core != NULL, "mcd_open_core_f (session + attach)");
             if (r != MCD_RET_ACT_NONE || core == NULL) {
                 mcd_error_info_st ei;
@@ -389,6 +402,58 @@ int main(int argc, char **argv)
                         printf("       error 0x%08x: %s (num_tx_ok %u)\n",
                                (unsigned)ei.error_code, ei.error_str,
                                (unsigned)tl.num_tx_ok);
+                    }
+                }
+
+                /* M20b: register map dump (--regmap) — cross-calibration
+                 * aid for the per-core CSFR addresses (read-only). */
+                if (regmap) {
+                    mcd_register_group_st rg;
+                    uint32_t ng = 1, nr = 0, k;
+
+                    printf("  -- M20b register map dump (--regmap) --\n");
+                    memset(&rg, 0, sizeof(rg));
+                    r = f_reggroups(core, 0, &ng, &rg);
+                    printf("       reg_groups rc %d n %u", (int)r, (unsigned)ng);
+                    if (r == MCD_RET_ACT_NONE && ng == 1)
+                        printf(" id %u name '%s' n_registers %u\n",
+                               (unsigned)rg.reg_group_id, rg.reg_group_name,
+                               (unsigned)rg.n_registers);
+                    else
+                        printf("\n");
+
+                    r = f_regmap(core, 0, 0, &nr, NULL);
+                    printf("       reg_map count rc %d n %u\n", (int)r, (unsigned)nr);
+                    if (r == MCD_RET_ACT_NONE && nr > 0) {
+                        uint64_t pc_addr = 0;
+                        for (k = 0; k < nr; k++) {
+                            mcd_register_info_st ri;
+                            uint32_t one = 1;
+                            memset(&ri, 0, sizeof(ri));
+                            r = f_regmap(core, 0, k, &one, &ri);
+                            if (r != MCD_RET_ACT_NONE || one != 1) {
+                                printf("       [%u] rc %d n %u\n", (unsigned)k,
+                                       (int)r, (unsigned)one);
+                                break;
+                            }
+                            printf("       [%2u] %-5s addr 0x%08llX size %u space %u\n",
+                                   (unsigned)k, ri.regname,
+                                   (unsigned long long)ri.addr.address,
+                                   (unsigned)ri.regsize,
+                                   (unsigned)ri.addr.mem_space_id);
+                            if (strcmp(ri.regname, "PC") == 0)
+                                pc_addr = ri.addr.address;
+                        }
+                        if (pc_addr != 0) {
+                            uint32_t pc_val = 0;
+                            if (read_word32(f_txlist, core, pc_addr, &pc_val) == 0)
+                                printf("       PC live read @0x%08llX -> 0x%08X\n",
+                                       (unsigned long long)pc_addr,
+                                       (unsigned)pc_val);
+                            else
+                                printf("       PC live read @0x%08llX FAILED\n",
+                                       (unsigned long long)pc_addr);
+                        }
                     }
                 }
 

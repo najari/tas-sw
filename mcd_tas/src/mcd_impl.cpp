@@ -1511,7 +1511,8 @@ static const mcd_tas_reg_desc_t g_reg_desc[] = {
 };
 #define MCD_TAS_REG_COUNT ((uint32_t)(sizeof(g_reg_desc) / sizeof(g_reg_desc[0])))
 
-static void mcd_tas_fill_reg_info(mcd_register_info_st *ri, uint32_t idx)
+static void mcd_tas_fill_reg_info(mcd_register_info_st *ri, uint32_t idx,
+                                  int core_index)
 {
     const mcd_tas_reg_desc_t *d = &g_reg_desc[idx];
 
@@ -1519,7 +1520,11 @@ static void mcd_tas_fill_reg_info(mcd_register_info_st *ri, uint32_t idx)
     /* Reference: registers live in memory space id 0; the basic client
      * passes that id back for its polling reads. */
     ri->addr.mem_space_id = 0;
-    ri->addr.address = d->addr;
+    /* M20b: the table holds the CPU0 CSFR addresses; the reference serves
+     * the addressed core's CSFR window (cross-calibrated: core1 -> +0x20000,
+     * core2 -> +0x40000 on all 40 entries). */
+    ri->addr.address = d->addr +
+                       (uint64_t)MCD_TAS_CSFR_STRIDE * (uint32_t)core_index;
     ri->reg_group_id = MCD_TAS_REG_GROUP_CPU;
     copy_str(ri->regname, sizeof(ri->regname), d->name);
     ri->regsize = 32;
@@ -1573,11 +1578,13 @@ mcd_return_et mcd_qry_reg_map_f(const mcd_core_st *core, uint32_t reg_group_id,
                                 mcd_register_info_st *reg_info)
 {
     mcd_return_et r = MCD_RET_ACT_NONE;
+    mcd_core_slot_t *cs;
 
     mcd_lock();
     err_clear();
 
-    if (core_slot_from(core) == NULL) {
+    cs = core_slot_from(core);
+    if (cs == NULL) {
         r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
                     "mcd_qry_reg_map_f: unknown core handle");
     } else if (num_regs == NULL) {
@@ -1602,7 +1609,7 @@ mcd_return_et mcd_qry_reg_map_f(const mcd_core_st *core, uint32_t reg_group_id,
                 uint32_t idx = start_index + i;
                 if (idx >= MCD_TAS_REG_COUNT)
                     break;
-                mcd_tas_fill_reg_info(&reg_info[i], idx);
+                mcd_tas_fill_reg_info(&reg_info[i], idx, cs->core_index);
                 n++;
             }
             *num_regs = n;
