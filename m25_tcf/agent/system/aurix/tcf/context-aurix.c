@@ -79,6 +79,7 @@
 
 /* TRxEVT values: BOD|BBM|EVTA=Halt (0x1A) + access type (M18) */
 #define AURIX_TRIG_EVT_IP     0x0000101Au  /* instruction (TYP=PC)       */
+#define AURIX_TRIG_EVT_IP_RANGE 0x0000301Au /* instruction range (pair)  */
 #define AURIX_TRIG_EVT_WRITE  0x0800001Au  /* data write                 */
 #define AURIX_TRIG_EVT_READ   0x1000001Au  /* data read                  */
 #define AURIX_TRIG_EVT_RW     0x1800001Au  /* data read or write         */
@@ -311,6 +312,30 @@ static uint32_t aurix_trig_evt(ContextBreakpoint * bp) {
     return 0;
 }
 
+/* write the trigger registers of one planted breakpoint (the unit pair
+ * for range breakpoints: the even unit holds the event config and the
+ * start address, the odd neighbour holds the inclusive end address) */
+static void aurix_write_trig(ContextExtensionAurix * ext, int unit) {
+    ContextBreakpoint * bp = ext->hw_bp[unit];
+    uint32_t evt;
+
+    if (bp == NULL) return;
+    if (bp->length > 1) {
+        if ((unit & 1) != 0) return;   /* handled by the even unit */
+        core_csfr_write(ext->core_index, AURIX_TRIG_ADR_OFF(unit),
+                        (uint32_t)bp->address);
+        core_csfr_write(ext->core_index, AURIX_TRIG_EVT_OFF(unit),
+                        AURIX_TRIG_EVT_IP_RANGE);
+        core_csfr_write(ext->core_index, AURIX_TRIG_ADR_OFF(unit + 1),
+                        (uint32_t)(bp->address + bp->length - 1));
+        return;
+    }
+    evt = aurix_trig_evt(bp);
+    if (evt == 0) return;
+    core_csfr_write(ext->core_index, AURIX_TRIG_ADR_OFF(unit), (uint32_t)bp->address);
+    core_csfr_write(ext->core_index, AURIX_TRIG_EVT_OFF(unit), evt);
+}
+
 /* (re)write the trigger registers of all planted hardware breakpoints:
  * the reference step sequence disables the trigger units, so they must
  * be restored after every step */
@@ -321,16 +346,8 @@ static void aurix_rearm_triggers(int core) {
 
     if (ctx == NULL) return;
     ext = EXT(ctx);
-    for (i = 0; i < AURIX_TRIG_UNITS; i++) {
-        ContextBreakpoint * bp = ext->hw_bp[i];
-        uint32_t evt;
-
-        if (bp == NULL) continue;
-        evt = aurix_trig_evt(bp);
-        if (evt == 0) continue;
-        core_csfr_write(core, AURIX_TRIG_ADR_OFF(i), (uint32_t)bp->address);
-        core_csfr_write(core, AURIX_TRIG_EVT_OFF(i), evt);
-    }
+    for (i = 0; i < AURIX_TRIG_UNITS; i++)
+        aurix_write_trig(ext, i);
 }
 
 /* step: the reference M22 sequence (single instruction) */
@@ -606,24 +623,55 @@ int context_can_resume(Context * ctx, int mode) {
     return 0;
 }
 
+/*
+ * SPR local -> global alias translation (M20 calibration): the local
+ * scratchpad windows are CPU private; the debug interface sees the
+ * global bus aliases only.
+ *   DSPR: 0xD0000000 (128 KiB) -> 0x70000000 - core*0x10000000
+ *   PSPR: 0xC0000000 ( 32 KiB) -> 0x70100000 - core*0x10000000
+ */
+#define AURIX_SPR_DSPR_LOCAL  0xD0000000u
+#define AURIX_SPR_DSPR_SIZE   0x20000u
+#define AURIX_SPR_DSPR_BUS    0x70000000u
+#define AURIX_SPR_PSPR_LOCAL  0xC0000000u
+#define AURIX_SPR_PSPR_SIZE   0x8000u
+#define AURIX_SPR_PSPR_BUS    0x70100000u
+#define AURIX_SPR_CORE_STEP   0x10000000u
+
+static uint32_t aurix_spr_translate(int core, uint32_t addr) {
+    uint32_t base = (uint32_t)core * AURIX_SPR_CORE_STEP;
+
+    if (addr >= AURIX_SPR_DSPR_LOCAL && addr < AURIX_SPR_DSPR_LOCAL + AURIX_SPR_DSPR_SIZE)
+        return AURIX_SPR_DSPR_BUS - base + (addr - AURIX_SPR_DSPR_LOCAL);
+    if (addr >= AURIX_SPR_PSPR_LOCAL && addr < AURIX_SPR_PSPR_LOCAL + AURIX_SPR_PSPR_SIZE)
+        return AURIX_SPR_PSPR_BUS - base + (addr - AURIX_SPR_PSPR_LOCAL);
+    return addr;
+}
+
+/* memory access address: SPR local windows are translated to the core's
+ * global bus aliases (M20) */
+static uint64_t aurix_mem_addr(Context * ctx, ContextAddress address) {
+    if (address <= 0xFFFFFFFFu)
+        return (uint64_t)aurix_spr_translate(EXT(ctx)->core_index, (uint32_t)address);
+    return (uint64_t)address;
+}
+
 int context_write_mem(Context * ctx, ContextAddress address, void * buf,
                       size_t size) {
-    (void)ctx;
     if (!g_attached) {
         errno = ERR_UNSUPPORTED;
         return -1;
     }
-    return tas_rw((uint64_t)address, buf, size, 1);
+    return tas_rw(aurix_mem_addr(ctx, address), buf, size, 1);
 }
 
 int context_read_mem(Context * ctx, ContextAddress address, void * buf,
                      size_t size) {
-    (void)ctx;
     if (!g_attached) {
         errno = ERR_UNSUPPORTED;
         return -1;
     }
-    return tas_rw((uint64_t)address, buf, size, 0);
+    return tas_rw(aurix_mem_addr(ctx, address), buf, size, 0);
 }
 
 unsigned context_word_size(Context * ctx) {
@@ -678,20 +726,37 @@ int context_get_canonical_addr(Context * ctx, ContextAddress addr,
                                ContextAddress * canonical_addr,
                                ContextAddress * block_addr,
                                ContextAddress * block_size) {
-    const ContextAddress page_size = 0x1000;
+    int core = EXT(ctx)->core_index;
+    ContextAddress ca = addr;
+
+    if (addr <= 0xFFFFFFFFu) {
+        ca = (ContextAddress)aurix_spr_translate(core, (uint32_t)addr);
+    }
 
     *canonical_ctx = ctx;
-    if (canonical_addr != NULL) *canonical_addr = addr;
-    if (block_addr != NULL) *block_addr = addr & ~(page_size - 1);
-    if (block_size != NULL) *block_size = page_size;
+    if (canonical_addr != NULL) *canonical_addr = ca;
+    if (block_addr != NULL) *block_addr = ca & ~(ContextAddress)0xFFF;
+    if (block_size != NULL) *block_size = 0x1000;
     return 0;
 }
 
 int context_get_memory_map(Context * ctx, MemoryMap * map) {
+    /* the reference "Code and Data" space (M8): one region covering the
+     * whole address space */
     (void)ctx;
-    (void)map;
-    /* M25-2: the reference "Code and Data" region (M8).  An empty map
-     * is valid: the client keeps its own (ELF based) regions. */
+    if (map->region_cnt >= map->region_max) {
+        map->region_max += 8;
+        map->regions = (MemoryRegion *)loc_realloc(map->regions,
+                                                  sizeof(MemoryRegion) * map->region_max);
+    }
+    {
+        MemoryRegion * r = map->regions + map->region_cnt++;
+        memset(r, 0, sizeof(MemoryRegion));
+        r->addr = 0;
+        r->size = 0x100000000ull;
+        r->flags = MM_FLAG_R | MM_FLAG_W | MM_FLAG_X;
+        r->sect_name = loc_strdup("Code and Data");
+    }
     return 0;
 }
 
@@ -707,48 +772,73 @@ int context_get_supported_bp_access_types(Context * ctx) {
  * Hardware breakpoints: the OCDS trigger units TR0..TR7 of the core
  * (M18 calibration).  Each unit holds one address (TRxADR) and an event
  * configuration (TRxEVT); a hit halts the core and sets the unit's bit
- * in TRIG_ACC (read clears).
+ * in TRIG_ACC (read clears).  Range breakpoints use an even/odd unit
+ * pair: the even unit holds the event config and the start address, the
+ * odd neighbour holds the inclusive end address.
  */
 int context_plant_breakpoint(ContextBreakpoint * bp) {
     ContextExtensionAurix * ext = EXT(bp->ctx);
-    uint32_t evt;
-    int unit = -1;
     int i;
 
     if (bp->length > 1) {
-        /* ranges need a unit pair (TR0ADR/TR1ADR) - not implemented yet */
-        errno = ERR_UNSUPPORTED;
-        return -1;
-    }
-    evt = aurix_trig_evt(bp);
-    if (evt == 0) {
-        errno = ERR_UNSUPPORTED;
-        return -1;
-    }
-
-    for (i = 0; i < AURIX_TRIG_UNITS; i++) {
-        if (ext->hw_bp[i] == NULL) {
-            unit = i;
-            break;
+        /* range breakpoint: an instruction range needs a free unit pair */
+        int u = -1;
+        if ((bp->access_types & CTX_BP_ACCESS_INSTRUCTION) == 0 ||
+            aurix_trig_evt(bp) == 0) {
+            errno = ERR_UNSUPPORTED;
+            return -1;
         }
-    }
-    if (unit < 0) {
-        set_errno(ERR_OTHER, "All hardware breakpoints are already in use");
-        return -1;
+        for (i = 0; i + 1 < AURIX_TRIG_UNITS; i += 2) {
+            if (ext->hw_bp[i] == NULL && ext->hw_bp[i + 1] == NULL) {
+                u = i;
+                break;
+            }
+        }
+        if (u < 0) {
+            set_errno(ERR_OTHER, "All hardware breakpoints are already in use");
+            return -1;
+        }
+        ext->hw_bp[u] = bp;
+        ext->hw_bp[u + 1] = bp;
+        bp->id |= (1u << u) | (1u << (u + 1));
+        aurix_write_trig(ext, u);
+        trace(LOG_ALWAYS, "AURIX: core %d: hardware breakpoint 0x%08X..0x%08X "
+              "planted in TR%d/TR%d", ext->core_index, (unsigned)bp->address,
+              (unsigned)(bp->address + bp->length - 1), u, u + 1);
+        return 0;
     }
 
-    ext->hw_bp[unit] = bp;
-    bp->id = (unsigned)unit + 1;
-    if (core_csfr_write(ext->core_index, AURIX_TRIG_ADR_OFF(unit),
-                        (uint32_t)bp->address) != 0 ||
-        core_csfr_write(ext->core_index, AURIX_TRIG_EVT_OFF(unit), evt) != 0) {
-        ext->hw_bp[unit] = NULL;
-        bp->id = 0;
-        return -1;
+    {
+        uint32_t evt = aurix_trig_evt(bp);
+        int unit = -1;
+
+        if (evt == 0) {
+            errno = ERR_UNSUPPORTED;
+            return -1;
+        }
+        for (i = 0; i < AURIX_TRIG_UNITS; i++) {
+            if (ext->hw_bp[i] == NULL) {
+                unit = i;
+                break;
+            }
+        }
+        if (unit < 0) {
+            set_errno(ERR_OTHER, "All hardware breakpoints are already in use");
+            return -1;
+        }
+        ext->hw_bp[unit] = bp;
+        bp->id |= 1u << unit;
+        if (core_csfr_write(ext->core_index, AURIX_TRIG_ADR_OFF(unit),
+                            (uint32_t)bp->address) != 0 ||
+            core_csfr_write(ext->core_index, AURIX_TRIG_EVT_OFF(unit), evt) != 0) {
+            ext->hw_bp[unit] = NULL;
+            bp->id = 0;
+            return -1;
+        }
+        trace(LOG_ALWAYS, "AURIX: core %d: hardware breakpoint 0x%08X "
+              "(access 0x%X) planted in TR%d", ext->core_index,
+              (unsigned)bp->address, (unsigned)bp->access_types, unit);
     }
-    trace(LOG_ALWAYS, "AURIX: core %d: hardware breakpoint 0x%08X "
-          "(access 0x%X) planted in TR%d", ext->core_index,
-          (unsigned)bp->address, (unsigned)bp->access_types, unit);
     return 0;
 }
 
@@ -760,10 +850,11 @@ int context_unplant_breakpoint(ContextBreakpoint * bp) {
         if (ext->hw_bp[i] == bp) {
             ext->hw_bp[i] = NULL;
             core_csfr_write(ext->core_index, AURIX_TRIG_EVT_OFF(i), 0);
-            trace(LOG_ALWAYS, "AURIX: core %d: hardware breakpoint TR%d removed",
-                  ext->core_index, i);
         }
     }
+    if (bp->id != 0)
+        trace(LOG_ALWAYS, "AURIX: core %d: hardware breakpoint removed (units 0x%X)",
+              ext->core_index, bp->id);
     bp->id = 0;
     return 0;
 }
