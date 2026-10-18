@@ -1,0 +1,48 @@
+diff --git a/agent/tcf/main/main.c b/agent/tcf/main/main.c
+index d9aedc7..bfe72e4 100644
+--- a/agent/tcf/main/main.c
++++ b/agent/tcf/main/main.c
+@@ -347,12 +347,27 @@ int main(int argc, char ** argv) {
+                 show_help();
+                 exit(0);
+ 
++            /* AURIX agent (aurix-debugger.exe) compatibility: these options
++             * are accepted and ignored so the agent can be used as a drop-in
++             * replacement in the AURIX launch flows.  The target device and
++             * the session parameters are handled by the TAS backend. */
++            case 'f':
++            case 'G':
++                break;
++
+             case 'I':
+ #if ENABLE_Trace
+             case 'l':
+ #endif
+             case 'L':
+             case 's':
++            /* AURIX agent compatible options taking an argument */
++            case 'p':
++            case 'e':
++            case 'b':
++            case 'r':
++            case 'K':
++            case 'A':
+ #if ENABLE_GdbRemoteSerialProtocol
+             case 'g':
+ #endif
+@@ -370,6 +385,15 @@ int main(int argc, char ** argv) {
+                     s = argv[ind];
+                 }
+                 switch (c) {
++                case 'p':   /* target device name (aurix-debugger -p) */
++                case 'e':   /* entry function (-e) */
++                case 'b':   /* core number (-b) */
++                case 'r':   /* SVD file (-r) */
++                case 'K':   /* workspace (-K) */
++                case 'A':   /* core selection mask (-A) */
++                    trace(LOG_ALWAYS, "AURIX: option -%c %s accepted (ignored)", c, s);
++                    break;
++
+                 case 'I':
+                     idle_timeout = strtol(s, 0, 0);
+                     break;

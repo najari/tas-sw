@@ -68,7 +68,7 @@ typedef struct tas_server_info {
     uint16_t ver_b;
     uint32_t protocols;     /* protocol feature bitfield                 */
     uint32_t channels;      /* communication channel feature bitfield    */
-    uint32_t trace;         /* trace feature bitfield                    */
+    uint32_t trace_feat;    /* trace feature bitfield                    */
     char     date[16];      /* build date string "Apr 30 2026"           */
 } tas_server_info;
 

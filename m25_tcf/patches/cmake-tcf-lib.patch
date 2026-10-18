@@ -1,0 +1,41 @@
+diff --git a/cmake-tcf-lib.txt b/cmake-tcf-lib.txt
+index c7a0c1d..de03079 100644
+--- a/cmake-tcf-lib.txt
++++ b/cmake-tcf-lib.txt
+@@ -47,6 +47,18 @@ if(TCF_MACHINE STREQUAL "a64")
+   list(APPEND TCF_SRCS_REL machine/arm/tcf/disassembler-thumb.c)
+ endif()
+ 
++# AURIX backend (M25 prototype: the TAS-based context interface!)
++file(GLOB TCF_AURIX_SRCS_REL RELATIVE ${TCF_BASE_DIR}
++	${TCF_BASE_DIR}/system/aurix/tcf/*.c)
++list(APPEND TCF_SRCS_REL ${TCF_AURIX_SRCS_REL})
++
++# The AURIX backend replaces the host OS debug context backend (the same
++# way the original aurix-debugger.exe does: system/aurix/tcf/context-aurix
++# takes the role of system/<host>/tcf/context-*).
++if(TCF_AURIX_SRCS_REL)
++  list(REMOVE_ITEM TCF_SRCS_REL system/Windows/tcf/context-win32.c)
++endif()
++
+ # remove non-library files
+ file(GLOB TCF_MAIN_REL RELATIVE ${TCF_BASE_DIR}
+ 	${TCF_BASE_DIR}/tcf/main/main*.c)
+@@ -89,6 +101,17 @@ endif()
+ include_directories(${TCF_BASE_DIR} ${TCF_BASE_DIR}/system/${TCF_OPSYS} ${TCF_BASE_DIR}/machine/${TCF_MACHINE})
+ 
+ add_library(${TCF_LIB_NAME} ${TCF_LIB_TYPE} ${TCF_SRCS})
++
++# AURIX agent build: read symbols from target ELF files; no host PE/PDB
++# symbol support and no client side symbols proxy (the agent answers
++# symbol queries itself, like the original aurix-debugger.exe).
++if(TCF_AURIX_SRCS_REL)
++  target_compile_definitions(${TCF_LIB_NAME} PUBLIC
++    ENABLE_ELF=1
++    ENABLE_PE=0
++    ENABLE_SymbolsProxy=0
++    ENABLE_RCBP_TEST=0)
++endif()
+ find_package(Threads)
+ target_link_libraries(${TCF_LIB_NAME} Threads::Threads)
+ find_library(LIBRT rt)

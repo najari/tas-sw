@@ -1,6 +1,6 @@
 /* tas_client.c - minimal TAS wire-protocol client (prototype). */
 #define WIN32_LEAN_AND_MEAN
-#include "tas_client.h"
+#include "aurix-tas.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -175,7 +175,7 @@ int tas_server_connect(tas_conn *c, const char *name, const char *user,
         info->ver_b = get16le(si + 66);
         info->protocols = get32le(si + 68);
         info->channels = get32le(si + 72);
-        info->trace = get32le(si + 76);
+        info->trace_feat = get32le(si + 76);
         memcpy(info->date, si + 96, 16);
         info->date[15] = 0;
     }
