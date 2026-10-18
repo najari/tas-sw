@@ -14,5 +14,10 @@ int main(void) {
     for (i = 0; i < 10; i++) {
         g_counter = add(g_counter, i);
     }
-    return mul_add(g_counter, 2, 1);
+    g_counter = mul_add(g_counter, 2, 1);
+    /* never return: the initial PCXI points to the host program's
+     * context, a RET would jump into it */
+    while (1) {
+        g_counter = g_counter + 1;
+    }
 }

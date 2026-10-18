@@ -58,16 +58,35 @@ UI: "Added breakpoint, line 5, file ..." +
 | SVD/주변장치 | **클라이언트 측**(확장+peripheral-viewer) | 에이전트 작업 불필요 ✓ |
 | **플래시 다운로드**(M25-4) | 원본 `-f`의 실체 — 실ELF를 타깃에 기록 | RAM 데모(아래)로 대체 검증 가능 |
 
-## 3. RAM 라이브 데모 (준비 완료 — 승인 대기)
+## 3. ★ RAM 라이브 데모 — 완전한 소스레벨 디버깅 실증 (2026-10-19, 승인 하 수행 + 복원)
 
-실제 소스 BP가 **히트**하는 완전한 데모 (되돌림 가능):
-1. `m25_3_ram_load.js`: 코어0의 **40레지스터 + DSPR 0x7000A000~0xC000(8KB) 저장**
-   (`m25_3_ram_state.json`) → `m25_ram.elf`의 .text(146B)를 DSPR에 기록 →
-   PC=main(0x7000A03A), A10(SP)=0x7000C000, ICR.IE=0 설정.
-2. 메모리 맵을 `m25_ram.elf`로 교체 → BP 재해석(0x7000A00C) → Run →
-   **소스 라인 정지 + 변수(g_counter) + 콜스택** UI 확인.
-3. `m25_3_ram_restore.js`: 레지스터 40개 + DSPR 8KB 복원 → 정지 상태 복귀
-   (DSPR은 전부 0 확인됨 — 복원도 0 기록).
+시행착오(모두 기록): ① DSPR은 데이터 전용이라 명령 페치 불가(코드는 PSPR!) →
+② 프로그램 끝 `ret`가 원본 PCXI(호스트 컨텍스트)로 점프 → `while(1)`로 종료 →
+③ 맵 소유 클라이언트가 끊기면 매핑 제거(확장이 상주해야 함) → launch.json program 교체.
+
+**최종 성공 시퀀스** (코어0, 전부 저장/복원 포함):
+1. `m25_3_ram_load.js`: 40레지스터 + DSPR(0x7000A000)/PSPR(0x70100000) 각 8KB 저장 →
+   `m25_pspr.elf`의 .text(180B)를 **PSPR(0x70100000)**에 적재(MATCH) →
+   PC=main(0x7010003A), A10(SP)=0x7000C000, ICR.IE=0.
+2. 확장이 `m25_pspr.elf`를 매핑(launch.json program) → 소스 BP(5행)가
+   **0x7010000C로 해석** (`Breakpoints getStatus`: Address=1880096780, Hardware ✓).
+3. Resume → `contextSuspended | 0x7010000C | "Breakpoint" | {"BPs":["m25bp"]}` ✓
+4. **VS Code UI**:
+```
+Thread Core 0: CPU0 TriCore 1.6E Paused on breakpoint
+Stack Frame add, line 5, m25_elf_test.c      ← DWARF 함수명 + 소스라인!
+Stack Frame main, line 15, m25_elf_test.c    ← 콜스택 2프레임(언와인드!) ✓
+add(int, int) (function)
+return a + b;, debugging paused, reason breakpoint, m25_elf_test.c:5
+```
+5. `m25_3_ram_restore.js`: 레지스터 40/40 + 두 영역 복원(MATCH) →
+   **PC=0x8003A336(입력값), ICR=0x8000(IE 복원), FCX/PCXI 동일(CSA 무결), BP 제거([])** ✓
+
+**의의**: 소스 BP→DWARF 라인→주소→HW 트리거→실행→히트→**콜스택/함수명/소스라인**까지
+전 구간이 우리 에이전트만으로 동작. 타깃 상태는 완전 복원(불변식 준수).
+
+**부수 규명**: FCX/PCXI CSA 체인은 CALL/RET로 균형 유지(누수 0) — 원본 CSA 영역
+(0xD0004EC0 로컬 = 0x70004EC0 버스)을 재사용해도 무해(잔여 데이터만).
 
 ## 4. 산출물
 
