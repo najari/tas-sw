@@ -54,3 +54,15 @@ Infineon **MCDS Recorder Library 3.3.0.0**(`mcd_recorder.dll`)의 **API 호환 �
   miniWiggler V3!) · 보드 매뉴얼 = "accessed via JTAG or DAP" · map 0=제품칩/map 1=EEC (TC27x UM §1.4.4)
 - → 타깃 하드웨어(MCDS!)는 존재 ✓ — 남은 관건 = **온보드 AURDuino(FTDI/BOBW)의 EEC 접근 지원 여부**
   (0x8D의 유력 원인). DAP miniWiggler V3 또는 TriBoard로 검증 시 우리 recorder 즉시 동작 예상.
+
+## MTV 검증 (2026-10-18) — 원본 Trace Viewer도 동일 차단 확정!
+
+- **MTV GUI 직접 실행 + Frida 캡처** (mcds_trace_viewer.exe = mcds_recorder.dll+WS2_32 사용!)
+- MTV는 장치 연결 성공 (타이틀: "DAS JTAG AURDUINO 46YPEADW - MCDS Trace Viewer"!) — 그러나:
+  - **map-1 MCDS 프로브(0xF00E0080) = 0x8D 실패** ✗ (recorder/configurator와 동일!)
+  - **설정 기록 프레임이 없음** = 녹화가 프로브 단계에서 차단 (트레이스 테이블 빈 채!)
+  - map-15 카운터(RD64 ✓)·map-0 읽기 ✓ = 정상
+- **결론: 사용자의 원본 툴(MTV)조차 이 보드에서 녹화 불가 = 소프트웨어 문제 아님, 어댑터
+  (온보드 AURDuino FTDI)의 EEC/MCDS 접근 한계 확정!** (증거: m23b_dropin/M23_MTV_CAPTURE.md
+  + 스크린샷 2종!)
+- 참고: MTV 실행 중에는 서버 세션을 점유해 다른 클라이언트(우리 스모크)가 실패 → MTV 종료 시 복구 ✓
