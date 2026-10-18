@@ -4,9 +4,9 @@ MCD(Multi-Core Debug) API v1.1 **"SPRINT Release"** 구현 DLL 프로토타입.
 백엔드는 [TAS](https://github.com/najari/tas-sw) 서버(TCP 24817) — 즉, `mcdxdas.dll`(DAS 백엔드)의
 자매품으로 "MCD API를 TAS로" 제공하는 실험 구현입니다.
 
-- 상태: **M18 완료 (2026-10-18)** — M12까지 원본 `mcd_basic_client.exe`에 drop-in(`mcdxdas.dll` 자리)으로
-  **GUI 전 구간 검증 + 교차 캘리브레이션 완료**에 이어 **M16 run/stop · M17 reset · M18 트리거(브레이크포인트)**
-  실구현·라이브 검증(아래 M16/M17/M18 섹션). (M2 애태치: 초기 DEVICE_CONNECT 실패는 USB 허브 경유 문제 — 본체 직결로 해결)
+- 상태: **M19 완료 (2026-10-18)** — M12까지 GUI 전 구간 검증·교차 캘리브레이션 + **M16 run/stop · M17 reset ·
+  M18 트리거 · M19 trace·잔여 함수 원본 교차 캘리브레이션**(원본 DLL 직접 프로브, 12/12 라인 일치).
+  (M2 애태치: 초기 DEVICE_CONNECT 실패는 USB 허브 경유 문제 — 본체 직결로 해결)
 - 원칙: **읽기 전용 기본** — run/stop/reset/트리거는 M16~M18에서 구현(사용 승인 하 상태 변경), Step/CHL은 미구현(스텁)
 - 소스 언어: C++ (SPRINT `mcd_api.h` 헤더가 `extern "C"` 비가드 선언이라 C에서는 컴파일 불가)
 
@@ -59,11 +59,24 @@ build\Release\tas_probe.exe [host] [port]
 `mcd_open_core_f` `mcd_close_core_f` `mcd_qry_mem_spaces_f` `mcd_execute_txlist_f`
 `mcd_qry_state_f` `mcd_qry_max_payload_size_f`
 
-나머지 11개는 `MCD_RET_ACT_HANDLE_ERROR` + `MCD_ERR_FN_UNIMPLEMENTED` + 함수명 메시지를 반환합니다
+나머지 9개는 `MCD_RET_ACT_HANDLE_ERROR` + `MCD_ERR_FN_UNIMPLEMENTED` + 함수명 메시지를 반환합니다
 (`mcd_qry_error_info_f`로 조회 가능): `run_until`·`step`·`execute_command`,
-CHL 5종(open/send/receive/reset/close), `set_trace_state`·`read_trace`·`qry_input_handle`
-— 이 중 CHL 5종+`qry_input_handle`은 **원본 mcdxdas도 동일 스텁**(공용 스텁 0x1D30)이라 파리티.
-(run/stop은 **M16**, reset은 **M17**, 트리거는 **M18**에서 실구현 — 아래 섹션)
+CHL 5종(open/send/receive/reset/close), `qry_input_handle`
+— 이 중 CHL 5종+`qry_input_handle`은 **원본도 스텁/미export**라 파리티.
+(run/stop **M16** · reset **M17** · 트리거 **M18** · trace·잔여 캘리브레이션 **M19** — 아래 섹션)
+
+## M19 구현 — trace·잔여 함수 원본 교차 캘리브레이션 (2026-10-18)
+
+- **프로브 신규 확립**: smoke `--trace` 모드로 **원본 mcdxdas.dll(1.14.12)을 직접 로드**해 실측
+  (원본 로드 조건: 빈 system_key·개행+따옴표 config; NULL 인자에서 원본은 크래시 → 실버퍼 사용)
+- **③ execute_command**: 원본 exports에 **없음**(미export 3종: `execute_command`·`set_global`·`qry_input_handle`;
+  원본은 대신 `mcd_das_*` 4개 export) — 우리는 54개 전부 export(API-정합, 차이로 기록)
+- **④ trace 4종**: 원본은 전부 **무음 HANDLE_ERROR**(rc 3·code 0·출력 미변경) → 파리티 적용(`err_silent`)
+- **부수 캘리브레이션**: `qry_core_modes`(**Supervisor·User 2종** 구현) · `qry_reg_compound`/`qry_current_time`/
+  `qry_device_description`(→ rc 3+0x100) · `qry_max_payload_size`(**16384**) · `qry_trig_info`(**0xF/0x3/0x1/8/swbp=1**)
+- 검증: 원본 vs 우리 프로브 **12/12 라인 완전 일치** · smoke `--runstop`·`--rst`·`--trig` 회귀 ok ·
+  GUI Run/Stop sanity(Debug 복원) — 증거: `smoke_trace_orig.txt`/`smoke_trace_our.txt`
+- 배포: `drop_in\mcdxdas.dll` = SHA256 `F266DACC3FED9DD8…` (M19)
 
 ## M16 구현 — run/stop (2026-10-18)
 

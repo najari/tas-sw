@@ -182,6 +182,18 @@ static void err_clear(void)
     g.last_err.error_str[0] = 0;
 }
 
+/* M19: reference-parity "silent" error — the reference mcdxdas.dll
+ * returns HANDLE_ERROR without setting any error information for the
+ * MCD trace API functions (observed via the --trace probe). */
+static mcd_return_et err_silent(void)
+{
+    g.last_err.return_status = MCD_RET_ACT_HANDLE_ERROR;
+    g.last_err.error_code = MCD_ERR_NONE;
+    g.last_err.error_events = MCD_ERR_EVT_NONE;
+    g.last_err.error_str[0] = 0;
+    return MCD_RET_ACT_HANDLE_ERROR;
+}
+
 static void dbg(const char *fmt, ...)
 {
     va_list ap;
@@ -1062,9 +1074,28 @@ mcd_return_et mcd_qry_core_modes_f(const mcd_core_st *core,
         r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
                     "mcd_qry_core_modes_f: NULL num_modes");
     } else {
-        /* The prototype does not expose core mode switching. */
+        /* M19 calibration: the reference reports two core modes
+         * (1 'Supervisor', 2 'User'). */
+        static const struct { uint8_t id; const char *name; } modes[2] = {
+            { 1, "Supervisor" },
+            { 2, "User" },
+        };
+        uint32_t written = 0, i;
+
         dbg("mcd_tas: CALL qry_core_modes start=%u", (unsigned)start_index);
-        *num_modes = 0;
+        if (core_mode_info == NULL) {
+            *num_modes = (start_index < 2) ? (2u - start_index) : 0u;
+        } else {
+            uint32_t maxn = *num_modes;
+            for (i = start_index; i < 2 && written < maxn; i++) {
+                core_mode_info[written].core_mode = modes[i].id;
+                copy_str(core_mode_info[written].name,
+                         sizeof(core_mode_info[written].name),
+                         modes[i].name);
+                written++;
+            }
+            *num_modes = written;
+        }
     }
     mcd_unlock();
     return r;
@@ -1275,14 +1306,14 @@ mcd_return_et mcd_qry_device_description_f(const mcd_core_st *core,
         r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
                     "mcd_qry_device_description_f: NULL url_length");
     } else if (url == NULL) {
-        *url_length = 1;   /* required buffer size incl. terminating zero */
-    } else if (*url_length == 0) {
-        r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
-                    "mcd_qry_device_description_f: zero size url buffer");
+        /* M19 calibration: the reference reports this function as
+         * unimplemented (code 0x100) for any buffer. */
+        r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_FN_UNIMPLEMENTED,
+                    "Function is not implemented");
     } else {
-        /* The prototype has no IP-XACT description document. */
-        url[0] = '\0';
-        *url_length = 0;
+        /* M19 calibration: reference parity (unimplemented). */
+        r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_FN_UNIMPLEMENTED,
+                    "Function is not implemented");
     }
     mcd_unlock();
     return r;
@@ -1303,11 +1334,11 @@ mcd_return_et mcd_qry_max_payload_size_f(const mcd_core_st *core,
         r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
                     "mcd_qry_max_payload_size_f: NULL max_payload");
     } else {
-        /* The TAS transport is chunked internally; larger transaction
-         * sizes are split into PL0 items automatically. */
-        *max_payload = MCD_TAS_MAX_PAYLOAD;
-        dbg("mcd_tas: CALL qry_max_payload_size (-> %u)",
-            (unsigned)MCD_TAS_MAX_PAYLOAD);
+        /* M19 calibration: the reference reports 16384 (the API's
+         * MCD_GUARANTEED_MIN_PAYLOAD).  The TAS transport is chunked
+         * internally, so larger transaction lists are split automatically. */
+        *max_payload = 16384u;
+        dbg("mcd_tas: CALL qry_max_payload_size (-> 16384, reference parity)");
     }
     mcd_unlock();
     return r;
@@ -1600,8 +1631,11 @@ mcd_return_et mcd_qry_reg_compound_f(const mcd_core_st *core,
         r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
                     "mcd_qry_reg_compound_f: NULL num_reg_ids");
     } else {
-        /* No compound registers are exposed by the prototype. */
-        *num_reg_ids = 0;
+        /* M19 calibration: the reference reports this function as
+         * unimplemented (code 0x100). */
+        dbg("mcd_tas: CALL qry_reg_compound (reference: unimplemented)");
+        r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_FN_UNIMPLEMENTED,
+                    "Function is not implemented");
     }
     mcd_unlock();
     return r;
@@ -1630,9 +1664,21 @@ mcd_return_et mcd_qry_trig_info_f(const mcd_core_st *core,
         r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
                     "mcd_qry_trig_info_f: NULL trig_info");
     } else {
-        /* No trigger types are supported by the prototype. */
+        /* M19 calibration matches the reference mcdxdas.dll exactly:
+         * type 0xF (IP/READ/WRITE/RW), option 0x3 (IMPL_HARDWARE|
+         * IMPL_SOFTWARE), action 0x1 (DBG_DEBUG), 8 trigger units,
+         * software breakpoints available. */
         dbg("mcd_tas: CALL qry_trig_info");
         memset(trig_info, 0, sizeof(*trig_info));
+        trig_info->type = MCD_TRIG_TYPE_IP | MCD_TRIG_TYPE_READ |
+                          MCD_TRIG_TYPE_WRITE | MCD_TRIG_TYPE_RW;
+        trig_info->option = MCD_TRIG_OPT_IMPL_HARDWARE |
+                            MCD_TRIG_OPT_IMPL_SOFTWARE;
+        trig_info->action = MCD_TRIG_ACTION_DBG_DEBUG;
+        trig_info->trig_number = MCD_TAS_TRIG_UNITS;
+        trig_info->state_number = 0;
+        trig_info->counter_number = 0;
+        trig_info->sw_breakpoints = TRUE;
     }
     mcd_unlock();
     return r;
@@ -2584,9 +2630,11 @@ mcd_return_et mcd_qry_current_time_f(const mcd_core_st *core,
         r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
                     "mcd_qry_current_time_f: NULL current_time");
     } else {
-        /* Target runtime is not tracked by the prototype. */
-        dbg("mcd_tas: CALL qry_current_time");
-        *current_time = 0;
+        /* M19 calibration: the reference reports this function as
+         * unimplemented (code 0x100). */
+        dbg("mcd_tas: CALL qry_current_time (reference: unimplemented)");
+        r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_FN_UNIMPLEMENTED,
+                    "Function is not implemented");
     }
     mcd_unlock();
     return r;
@@ -2954,8 +3002,11 @@ mcd_return_et mcd_qry_traces_f(const mcd_core_st *core, uint32_t start_index,
         r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
                     "mcd_qry_traces_f: NULL num_traces");
     } else {
-        /* No traces are exposed by the prototype. */
-        *num_traces = 0;
+        /* M19 calibration: the reference mcdxdas.dll returns HANDLE_ERROR
+         * without any error information for the trace API on this target
+         * (observed via the --trace probe); outputs stay untouched. */
+        dbg("mcd_tas: CALL qry_traces (reference parity: silent HANDLE_ERROR)");
+        r = err_silent();
     }
     mcd_unlock();
     return r;
@@ -2977,8 +3028,10 @@ mcd_return_et mcd_qry_trace_state_f(const mcd_core_st *core, uint32_t trace_id,
         r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
                     "mcd_qry_trace_state_f: NULL state");
     } else {
-        /* No traces exist: report an idle/disabled trace state. */
-        memset(state, 0, sizeof(*state));
+        /* M19 calibration: reference parity (silent HANDLE_ERROR). */
+        dbg("mcd_tas: CALL qry_trace_state (reference parity: silent "
+            "HANDLE_ERROR)");
+        r = err_silent();
     }
     mcd_unlock();
     return r;
@@ -2987,15 +3040,45 @@ mcd_return_et mcd_qry_trace_state_f(const mcd_core_st *core, uint32_t trace_id,
 mcd_return_et mcd_set_trace_state_f(const mcd_core_st *core, uint32_t trace_id,
                                     mcd_trace_state_st *state)
 {
-    (void)core; (void)trace_id; (void)state;
-    STUB_ENTER("mcd_set_trace_state_f")
+    mcd_return_et r;
+
+    (void)trace_id; (void)state;
+    mcd_lock();
+    err_clear();
+
+    if (core_slot_from(core) == NULL) {
+        r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
+                    "mcd_set_trace_state_f: unknown core handle");
+    } else {
+        /* M19 calibration: reference parity (silent HANDLE_ERROR). */
+        dbg("mcd_tas: CALL set_trace_state (reference parity: silent "
+            "HANDLE_ERROR)");
+        r = err_silent();
+    }
+    mcd_unlock();
+    return r;
 }
 
 mcd_return_et mcd_read_trace_f(const mcd_core_st *core, uint32_t trace_id,
                                uint64_t start_index, uint32_t *num_frames,
                                uint32_t trace_data_size, void *trace_data)
 {
-    (void)core; (void)trace_id; (void)start_index; (void)num_frames;
+    mcd_return_et r;
+
+    (void)trace_id; (void)start_index; (void)num_frames;
     (void)trace_data_size; (void)trace_data;
-    STUB_ENTER("mcd_read_trace_f")
+    mcd_lock();
+    err_clear();
+
+    if (core_slot_from(core) == NULL) {
+        r = err_set(MCD_RET_ACT_HANDLE_ERROR, MCD_ERR_PARAM,
+                    "mcd_read_trace_f: unknown core handle");
+    } else {
+        /* M19 calibration: reference parity (silent HANDLE_ERROR). */
+        dbg("mcd_tas: CALL read_trace (reference parity: silent "
+            "HANDLE_ERROR)");
+        r = err_silent();
+    }
+    mcd_unlock();
+    return r;
 }

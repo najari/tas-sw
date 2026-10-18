@@ -31,6 +31,18 @@ typedef mcd_return_et (*pfn_createtrig)(const mcd_core_st *, void *, uint32_t *)
 typedef mcd_return_et (*pfn_qrytrigset)(const mcd_core_st *, uint32_t, uint32_t *, uint32_t *);
 typedef mcd_return_et (*pfn_qrytrigstate)(const mcd_core_st *, uint32_t, mcd_trig_state_st *);
 typedef mcd_return_et (*pfn_removetrig)(const mcd_core_st *, uint32_t);
+typedef mcd_return_et (*pfn_qrytraces)(const mcd_core_st *, uint32_t, uint32_t *, mcd_trace_info_st *);
+typedef mcd_return_et (*pfn_qrytracestate)(const mcd_core_st *, uint32_t, mcd_trace_state_st *);
+typedef mcd_return_et (*pfn_settracestate)(const mcd_core_st *, uint32_t, mcd_trace_state_st *);
+typedef mcd_return_et (*pfn_readtrace)(const mcd_core_st *, uint32_t, uint64_t, uint32_t *, uint32_t, void *);
+typedef mcd_return_et (*pfn_qrycoremodes)(const mcd_core_st *, uint32_t, uint32_t *, mcd_core_mode_info_st *);
+typedef mcd_return_et (*pfn_qryoverlays)(const mcd_core_st *, uint32_t, uint32_t *, uint32_t *);
+typedef mcd_return_et (*pfn_qryregcompound)(const mcd_core_st *, uint32_t, uint32_t, uint32_t *, uint32_t *);
+typedef mcd_return_et (*pfn_qryctrigs)(const mcd_core_st *, uint32_t, uint32_t *, mcd_ctrig_info_st *);
+typedef mcd_return_et (*pfn_qrycurrenttime)(const mcd_core_st *, uint64_t *);
+typedef mcd_return_et (*pfn_qrydevdesc)(const mcd_core_st *, mcd_char_t *, uint32_t *);
+typedef mcd_return_et (*pfn_qrymaxpayload)(const mcd_core_st *, uint32_t *);
+typedef mcd_return_et (*pfn_qrytriginfo)(const mcd_core_st *, mcd_trig_info_st *);
 typedef mcd_return_et (*pfn_open_core)(const mcd_core_con_info_st *, mcd_core_st **);
 typedef mcd_return_et (*pfn_close_core)(const mcd_core_st *);
 typedef mcd_return_et (*pfn_qry_mem_spaces)(const mcd_core_st *, uint32_t, uint32_t *, mcd_memspace_st *);
@@ -84,9 +96,13 @@ int main(int argc, char **argv)
     const char *dll  = (argc > 1 && argv[1][0] && argv[1][0] != '-') ? argv[1] : "mcd_tas.dll";
     const char *cfg  = (argc > 2 && argv[2][0] && argv[2][0] != '-') ? argv[2] : NULL;
     int attach = 0;
+
+    /* unbuffered output: a crashing DLL must not hide prior progress */
+    setvbuf(stdout, NULL, _IONBF, 0);
     int runstop = 0;
     int rst = 0;
     int trig = 0;
+    int trace = 0;
     mcd_return_et r;
     uint32_t n;
     uint32_t i;
@@ -100,14 +116,17 @@ int main(int argc, char **argv)
             rst = 1;
         if (strcmp(argv[i], "--trig") == 0)
             trig = 1;
+        if (strcmp(argv[i], "--trace") == 0)
+            trace = 1;
     }
 
     printf("== mcd_tas smoke test ==\n");
-    printf("dll: %s\ncfg: %s\nmode: %s%s%s%s\n\n", dll, cfg ? cfg : "(default)",
+    printf("dll: %s\ncfg: %s\nmode: %s%s%s%s%s\n\n", dll, cfg ? cfg : "(default)",
            attach ? "with core attach (--attach)" : "read-only",
            runstop ? " + run/stop (--runstop)" : "",
            rst ? " + reset (--rst)" : "",
-           trig ? " + trigger (--trig)" : "");
+           trig ? " + trigger (--trig)" : "",
+           trace ? " + trace probe (--trace)" : "");
 
     h = LoadLibraryA(dll);
     if (h == NULL) {
@@ -131,6 +150,18 @@ int main(int argc, char **argv)
     LOADFN(h, pfn_qrytrigset,   f_qrytrigset,   "mcd_qry_trig_set_f");
     LOADFN(h, pfn_qrytrigstate, f_qrytrigstate, "mcd_qry_trig_state_f");
     LOADFN(h, pfn_removetrig,   f_removetrig,   "mcd_remove_trig_f");
+    LOADFN(h, pfn_qrytraces,    f_qrytraces,    "mcd_qry_traces_f");
+    LOADFN(h, pfn_qrytracestate,f_qrytracestate,"mcd_qry_trace_state_f");
+    LOADFN(h, pfn_settracestate,f_settracestate,"mcd_set_trace_state_f");
+    LOADFN(h, pfn_readtrace,    f_readtrace,    "mcd_read_trace_f");
+    LOADFN(h, pfn_qrycoremodes, f_qrycoremodes, "mcd_qry_core_modes_f");
+    LOADFN(h, pfn_qryoverlays,  f_qryoverlays,  "mcd_qry_active_overlays_f");
+    LOADFN(h, pfn_qryregcompound, f_qryregcompound, "mcd_qry_reg_compound_f");
+    LOADFN(h, pfn_qryctrigs,    f_qryctrigs,    "mcd_qry_ctrigs_f");
+    LOADFN(h, pfn_qrycurrenttime, f_qrycurrenttime, "mcd_qry_current_time_f");
+    LOADFN(h, pfn_qrydevdesc,   f_qrydevdesc,   "mcd_qry_device_description_f");
+    LOADFN(h, pfn_qrymaxpayload, f_qrymaxpayload, "mcd_qry_max_payload_size_f");
+    LOADFN(h, pfn_qrytriginfo,  f_qrytriginfo,  "mcd_qry_trig_info_f");
     LOADFN(h, pfn_open_core,    f_opencore,   "mcd_open_core_f");
     LOADFN(h, pfn_close_core,   f_closecore,  "mcd_close_core_f");
     LOADFN(h, pfn_qry_mem_spaces, f_memspaces, "mcd_qry_mem_spaces_f");
@@ -187,7 +218,9 @@ int main(int argc, char **argv)
         mcd_core_con_info_st cores[8];
         uint32_t nsys, ndev, ncore;
 
-        r = f_open(NULL, cfg, &srv);
+        /* The reference demo passes an empty string (never NULL) for the
+         * system key; the original mcdxdas.dll crashes on NULL. */
+        r = f_open((const mcd_char_t *)"", cfg, &srv);
         CHK(r == MCD_RET_ACT_NONE && srv != NULL, "mcd_open_server_f");
         if (r != MCD_RET_ACT_NONE || srv == NULL) {
             mcd_error_info_st ei;
@@ -581,14 +614,197 @@ int main(int argc, char **argv)
                     }
                 }
 
+                /* M19: MCD trace API probing (--trace; read-only + no-op set). */
+                if (trace) {
+                    mcd_trace_info_st ti;
+                    uint32_t ntr = 4;
+                    mcd_error_info_st ei;
+
+                    memset(&ti, 0, sizeof(ti));
+                    memset(&ei, 0, sizeof(ei));
+                    r = f_qrytraces(core, 0, &ntr, &ti);
+                    f_err(core, &ei);
+                    printf("       [trace] qry_traces rc %d num %u code 0x%08x "
+                           "'%s'\n", (int)r, (unsigned)ntr,
+                           (unsigned)ei.error_code, ei.error_str);
+                    if (r == MCD_RET_ACT_NONE && ntr > 0) {
+                        mcd_trace_state_st ts;
+                        memset(&ts, 0, sizeof(ts));
+                        printf("       [trace] trace[0] id %u name '%s' "
+                               "type 0x%x format 0x%x modes 0x%x\n",
+                               (unsigned)ti.trace_id, ti.trace_name,
+                               (unsigned)ti.trace_type,
+                               (unsigned)ti.trace_format,
+                               (unsigned)ti.trace_modes);
+                        r = f_qrytracestate(core, ti.trace_id, &ts);
+                        f_err(core, &ei);
+                        printf("       [trace] qry_trace_state rc %d state 0x%x "
+                               "frames %llu size %llu code 0x%08x '%s'\n",
+                               (int)r, (unsigned)ts.state,
+                               (unsigned long long)ts.frames,
+                               (unsigned long long)ts.size,
+                               (unsigned)ei.error_code, ei.error_str);
+                        r = f_settracestate(core, ti.trace_id, &ts);
+                        f_err(core, &ei);
+                        printf("       [trace] set_trace_state(same) rc %d "
+                               "code 0x%08x '%s'\n", (int)r,
+                               (unsigned)ei.error_code, ei.error_str);
+                        {
+                            uint32_t frames = 4;
+                            uint8_t tbuf[256];
+                            memset(tbuf, 0, sizeof(tbuf));
+                            r = f_readtrace(core, ti.trace_id, 0, &frames,
+                                            sizeof(tbuf), tbuf);
+                            f_err(core, &ei);
+                            printf("       [trace] read_trace rc %d frames %u "
+                                   "code 0x%08x '%s'\n", (int)r,
+                                   (unsigned)frames,
+                                   (unsigned)ei.error_code, ei.error_str);
+                        }
+                    }
+                    {
+                        mcd_trace_state_st ts2;
+                        uint32_t frames = 1;
+                        uint8_t tbuf[64];
+
+                        memset(&ts2, 0, sizeof(ts2));
+                        memset(tbuf, 0, sizeof(tbuf));
+                        r = f_qrytracestate(core, 0x1234u, &ts2);
+                        f_err(core, &ei);
+                        printf("       [trace] qry_trace_state(id 0x1234) "
+                               "rc %d code 0x%08x '%s'\n", (int)r,
+                               (unsigned)ei.error_code, ei.error_str);
+
+                        r = f_settracestate(core, 0x1234u, &ts2);
+                        f_err(core, &ei);
+                        printf("       [trace] set_trace_state(id 0x1234, "
+                               "zero state) rc %d code 0x%08x '%s'\n", (int)r,
+                               (unsigned)ei.error_code, ei.error_str);
+
+                        r = f_readtrace(core, 0x1234u, 0, &frames,
+                                        sizeof(tbuf), tbuf);
+                        f_err(core, &ei);
+                        printf("       [trace] read_trace(id 0x1234) rc %d "
+                               "frames %u code 0x%08x '%s'\n", (int)r,
+                               (unsigned)frames,
+                               (unsigned)ei.error_code, ei.error_str);
+                    }
+
+                    /* M19: parity probes for the remaining fixed-response
+                     * functions (all read-only; real buffers — the
+                     * original crashes on NULL buffers). */
+                    {
+                        mcd_core_mode_info_st mbuf[4];
+                        uint32_t nm = 4;
+                        uint32_t mi;
+                        memset(mbuf, 0, sizeof(mbuf));
+                        r = f_qrycoremodes(core, 0, &nm, mbuf);
+                        f_err(core, &ei);
+                        printf("       [misc] qry_core_modes rc %d num %u "
+                               "code 0x%08x '%s'\n", (int)r, (unsigned)nm,
+                               (unsigned)ei.error_code, ei.error_str);
+                        for (mi = 0; mi < nm && mi < 4; mi++)
+                            printf("       [misc]   mode[%u] id %u name '%s'\n",
+                                   (unsigned)mi,
+                                   (unsigned)mbuf[mi].core_mode,
+                                   mbuf[mi].name);
+                    }
+                    {
+                        uint32_t obuf[4];
+                        uint32_t nov = 4;
+                        memset(obuf, 0, sizeof(obuf));
+                        r = f_qryoverlays(core, 0, &nov, obuf);
+                        f_err(core, &ei);
+                        printf("       [misc] qry_active_overlays rc %d num %u "
+                               "code 0x%08x '%s'\n", (int)r, (unsigned)nov,
+                               (unsigned)ei.error_code, ei.error_str);
+                    }
+                    {
+                        uint8_t cbuf[4 * 128];
+                        uint32_t ncr = 4;
+                        memset(cbuf, 0, sizeof(cbuf));
+                        r = f_qryctrigs(core, 0, &ncr,
+                                        (mcd_ctrig_info_st *)cbuf);
+                        f_err(core, &ei);
+                        printf("       [misc] qry_ctrigs rc %d num %u "
+                               "code 0x%08x '%s'\n", (int)r, (unsigned)ncr,
+                               (unsigned)ei.error_code, ei.error_str);
+                    }
+                    {
+                        uint32_t rbuf[4];
+                        uint32_t nrc = 4;
+                        memset(rbuf, 0, sizeof(rbuf));
+                        r = f_qryregcompound(core, 0, 0, &nrc, rbuf);
+                        f_err(core, &ei);
+                        printf("       [misc] qry_reg_compound rc %d num %u "
+                               "code 0x%08x '%s'\n", (int)r, (unsigned)nrc,
+                               (unsigned)ei.error_code, ei.error_str);
+                    }
+                    {
+                        uint64_t t = 0;
+                        r = f_qrycurrenttime(core, &t);
+                        f_err(core, &ei);
+                        printf("       [misc] qry_current_time rc %d time %llu "
+                               "code 0x%08x '%s'\n", (int)r,
+                               (unsigned long long)t,
+                               (unsigned)ei.error_code, ei.error_str);
+                    }
+                    {
+                        uint32_t len = 0;
+                        r = f_qrydevdesc(core, NULL, &len);
+                        f_err(core, &ei);
+                        printf("       [misc] qry_device_description(NULL) "
+                               "rc %d len %u code 0x%08x '%s'\n", (int)r,
+                               (unsigned)len, (unsigned)ei.error_code,
+                               ei.error_str);
+                        if (r == MCD_RET_ACT_NONE && len > 0 && len < 256) {
+                            char ubuf[256];
+                            uint32_t len2 = len;
+                            memset(ubuf, 0, sizeof(ubuf));
+                            r = f_qrydevdesc(core, ubuf, &len2);
+                            f_err(core, &ei);
+                            printf("       [misc] qry_device_description "
+                                   "rc %d len %u '%s'\n", (int)r,
+                                   (unsigned)len2, ubuf);
+                        }
+                    }
+                    {
+                        uint32_t mp = 0;
+                        r = f_qrymaxpayload(core, &mp);
+                        f_err(core, &ei);
+                        printf("       [misc] qry_max_payload_size rc %d "
+                               "max %u code 0x%08x '%s'\n", (int)r,
+                               (unsigned)mp, (unsigned)ei.error_code,
+                               ei.error_str);
+                    }
+                    {
+                        mcd_trig_info_st tinfo;
+                        memset(&tinfo, 0, sizeof(tinfo));
+                        r = f_qrytriginfo(core, &tinfo);
+                        f_err(core, &ei);
+                        printf("       [misc] qry_trig_info rc %d type 0x%x "
+                               "opt 0x%x act 0x%x num %u state %u cnt %u swbp %u "
+                               "code 0x%08x '%s'\n", (int)r,
+                               (unsigned)tinfo.type, (unsigned)tinfo.option,
+                               (unsigned)tinfo.action,
+                               (unsigned)tinfo.trig_number,
+                               (unsigned)tinfo.state_number,
+                               (unsigned)tinfo.counter_number,
+                               (unsigned)tinfo.sw_breakpoints,
+                               (unsigned)ei.error_code, ei.error_str);
+                    }
+                }
+
                 r = f_closecore(core);
                 CHK(r == MCD_RET_ACT_NONE, "mcd_close_core_f");
             }
         }
 
         /* 7. invalid-handle path: mcd_run_f(NULL) must report an error
-         * (mcd_run_f itself is implemented since M16; see --runstop) */
-        {
+         * (mcd_run_f itself is implemented since M16; see --runstop).
+         * Skipped in --trace mode: the original mcdxdas.dll crashes on a
+         * NULL core handle instead of returning an error. */
+        if (!trace) {
             mcd_error_info_st ei;
             r = f_run(NULL, TRUE);
             CHK(r == MCD_RET_ACT_HANDLE_ERROR, "mcd_run_f(NULL) returns HANDLE_ERROR");
