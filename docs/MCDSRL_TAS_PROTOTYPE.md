@@ -66,3 +66,16 @@ Infineon **MCDS Recorder Library 3.3.0.0**(`mcd_recorder.dll`)의 **API 호환 �
   (온보드 AURDuino FTDI)의 EEC/MCDS 접근 한계 확정!** (증거: m23b_dropin/M23_MTV_CAPTURE.md
   + 스크린샷 2종!)
 - 참고: MTV 실행 중에는 서버 세션을 점유해 다른 클라이언트(우리 스모크)가 실패 → MTV 종료 시 복구 ✓
+
+## ShieldBuddy TC275 회로도 분석 (2026-10-18) — 해결책 확정!
+
+- **회로도 확보**: Hanyang 배포본(AES 암호화 → 빈 암호로 복호화!, Rev B1) + TC375 자매보드 공개본 교차
+- **온보드 = FT2232D**(DAS JTAG AURDUINO!) — UTDI/UTDO/UTRST/UTCK_DAP0/UTMS_DAP1 →
+  TDI/TDO/TRST/TCK_DAP0/TMS_DAP1 (JTAG+DAP 공용 배선)
+- **★ P302 = "DAP2WIRE" 커넥터 실장!** — 표준 Infineon 10핀 DAP(AP24003!) [1:VREF, 2:DAP1, 3:GND,
+  4:DAP0, 5:GND, 6:USER0_IO, 7:KEY, 8:USER1_IN, 9:GND, 10:RESET]
+- **ED의 TDI = VDDPSB** (매뉴얼: "JTAG is not available for such EDs"!) → JTAG TAP 불가 → **DAP만 유효**
+- **판정**: 온보드 FT2232D(구형, BOBW) = 기본 디버그(식별/메모리 ✓) but MCDS/EEC(AP1/map-1) ✗ —
+  DAS64 권장 **DAP miniWiggler V3**(신형!)와의 차이. 원본 3종(recorder/configurator/MTV) 동일 실패와 정합
+- **해결책: P302에 외부 DAP 디버거(DAP miniWiggler V3 등) 연결** → MCDS 개방 → M23-3 즉시 진행!
+  (새 보드 불필요 — 디버거 1개로 검증 가능!)
