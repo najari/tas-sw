@@ -841,23 +841,39 @@ void mcdsdl_set_device_callback(mctrl_rcfd_et rcfd,
 mcdsl_return_et mcdsdl_decode(const uint8_t *trace_data, uint32_t trace_size_kb,
                       uint32_t tdf, uint32_t dm)
 {
-    (void)tdf;
-    (void)dm;
-    /* the reference implementation runs a 174k-line engine here
-     * (trace decompression + message reconstruction + disassembly).
-     * This prototype keeps the loaded raw data but produces no messages. */
+    /* The dispatch structure is calibrated against the reference:
+     *   - the NULL/0 path handles TDF/DM (KEEP / feed / unsupported)
+     *   - the data path checks the 20 MB limit first
+     *   - the actual decode engine is not implemented in this prototype.
+     * Note: the reference crashes on decode(NULL, 0, 0x10, dm); we return
+     * a graceful error instead (documented difference). */
     if (trace_data == NULL && trace_size_kb == 0) {
-        g.num_msg = 0;
-        err_set(MCDSL_RET_SUCCESS,
-                "mcdsdl: decode engine not implemented in this prototype");
-        return MCDSL_RET_SUCCESS;
+        if (tdf == 0x80) {
+            if (dm == 0x05 || dm == 0xF0) {
+                g.num_msg = 0;
+                err_clear();
+                return MCDSL_RET_SUCCESS;
+            }
+            return err_set(MCDSL_RET_PARAM_VALUE_NOT_SUPPORTED,
+                           "MCDSDL_DM_CONT not supported for "
+                           "mcdsdl_decode(NULL, 0, MCTRL_TDF_KEEP, dm)");
+        }
+        if (tdf == 0x00) {
+            g.num_msg = 0;
+            err_clear();
+            return MCDSL_RET_SUCCESS;
+        }
+        if (tdf == 0x10) {
+            g.num_msg = 0;
+            return err_set(MCDSL_RET_FUNCTION_USED_WRONGLY,
+                           "trace_data is NULL");
+        }
+        return err_set(MCDSL_RET_PARAM_VALUE_NOT_SUPPORTED,
+                       "This trace data format is not supported");
     }
-    if (trace_data == NULL)
-        return err_set(MCDSL_RET_FUNCTION_USED_WRONGLY,
-                       "trace_data is NULL");
     if (trace_size_kb > MCDSDL_MAX_TRACE_DATA_SIZE_KB)
         return err_set(MCDSL_RET_PARAM_VALUE_NOT_SUPPORTED,
-                       "trace_size_kb exceeds the maximum");
+                       "Maximum trace_size_kb is 20480 (20MB)");
     g.num_msg = 0;
     err_set(MCDSL_RET_SUCCESS,
             "mcdsdl: decode engine not implemented in this prototype");

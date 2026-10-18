@@ -176,16 +176,43 @@ int main(int argc, char **argv)
         printf("       elf_file_unload_all done\n");
     }
 
-    /* 5. the engine stubs (the honest behaviour!) */
+    /* 5. the decode edge cases (the TDF/DM dispatch matrix - cross-check!) */
+    {
+        static uint8_t dummy[16] = { 0 };
+        struct {
+            const uint8_t *data;
+            uint32_t size_kb;
+            uint32_t tdf;
+            uint32_t dm;
+        } cases[] = {
+            { NULL, 0, 0x80, 0xF0 },   /* KEEP + RAW */
+            { NULL, 0, 0x80, 0x05 },   /* KEEP + SINGLE */
+            { NULL, 0, 0x80, 0x0C },   /* KEEP + CONT (the error!) */
+            { NULL, 0, 0x00, 0x05 },   /* tdf=0 (the feed!) */
+            { NULL, 0, 0x20, 0x05 },   /* the unsupported tdf */
+            { dummy, 20481, 0x00, 0x05 }, /* the oversize */
+            { dummy, 0, 0x00, 0x05 },  /* data with size 0 */
+            { NULL, 0, 0x10, 0x05 },   /* tdf=0x10 (the reference CRASHES on this!) */
+        };
+        int ci;
+
+        for (ci = 0; ci < (int)(sizeof(cases) / sizeof(cases[0])); ci++) {
+            r = f_decode(cases[ci].data, cases[ci].size_kb, cases[ci].tdf,
+                         cases[ci].dm);
+            printf("       decode(d=%s, sz=%u, tdf=0x%02X, dm=0x%02X) "
+                   "rc 0x%08X err '%s'\n",
+                   cases[ci].data ? "buf" : "NULL", (unsigned)cases[ci].size_kb,
+                   (unsigned)cases[ci].tdf, (unsigned)cases[ci].dm,
+                   (unsigned)r, f_error() ? f_error() : "(none)");
+        }
+    }
+
+    /* 5b. the engine stubs (the honest behaviour!) */
     {
         uint32_t instr = 0xDEADBEEF, isz = 0xDEADBEEF;
         const mcd_char_t *istr = (const mcd_char_t *)0xDEADBEEF;
         int32_t off = 0xDEADBEEF;
         mcd_bool_t abs = 0xDEADBEEF;
-
-        r = f_decode(NULL, 0, 0x80, 0xF0);
-        printf("       decode(NULL,0,KEEP,RAW) rc 0x%08X err '%s'\n",
-               (unsigned)r, f_error() ? f_error() : "(none)");
 
         r = f_instr((mctrl_opoint_et)0, 0x80000000u, &instr, &isz, &istr);
         printf("       get_instr rc 0x%08X instr 0x%X size %u str %s\n",
