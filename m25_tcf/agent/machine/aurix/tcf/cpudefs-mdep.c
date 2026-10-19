@@ -24,6 +24,7 @@
 
 #include <tcf/cpudefs-mdep.h>
 #include <machine/aurix/tcf/disassembler-aurix-tricore.h>
+#include <machine/aurix/tcf/stack-crawl-tricore.h>
 
 #define REG_OFFSET(name) offsetof(REG_SET, name)
 #define D_OFF(i)         (offsetof(REG_SET, d) + 4 * (i))
@@ -144,13 +145,10 @@ void add_cpudefs_disassembler(Context * cpu_ctx) {
 #endif
 
 /*
- * Stack crawl is not implemented yet (M25-3): the TriCore unwinding uses
- * the CSA chain (PCXI/FCX/LCX).  DWARF based unwinding (dwarfframe.c)
- * already works for frames covered by .debug_frame.
+ * Stack crawl: TriCore has no FP chain - the call stack is reconstructed
+ * from the CSA (Context Save Area) linked list through PCXI/FCX.
+ * Used by the framework stack tracer when DWARF frame info is unavailable.
  */
 int crawl_stack_frame(StackFrame * frame, StackFrame * down) {
-    (void)frame;
-    (void)down;
-    errno = ERR_UNSUPPORTED;
-    return -1;
+    return crawl_stack_frame_tricore(frame, down);
 }

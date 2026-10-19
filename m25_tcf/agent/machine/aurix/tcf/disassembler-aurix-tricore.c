@@ -377,6 +377,10 @@ static DisassemblyResult * dis_32(uint32_t v, ContextAddress addr) {
                  op1 == 0x6D ? "call" : "j", branch_target(addr, off16));
         return complete(4);
 
+    case 0x2D:  /* calli a */
+        snprintf(insn_buf, INSN_BUF_SIZE, "calli %s", an(d));
+        return complete(4);
+
     case 0x5F: { /* jeq/jne s1, s2, disp16 ([31] = negate; s1 = [11:8]) */
         unsigned neg = (v >> 31) & 1;
         int32_t disp = (int32_t)(int16_t)(((v >> 16) & 0x7FFF) << 1) >> 1;
