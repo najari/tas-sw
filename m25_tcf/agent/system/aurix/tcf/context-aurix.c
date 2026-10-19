@@ -43,6 +43,7 @@
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/trace.h>
 #include <tcf/services/breakpoints.h>
+#include <tcf/services/contextreset.h>
 #include <tcf/services/memorymap.h>
 #include <tcf/services/runctrl.h>
 
@@ -624,6 +625,53 @@ int context_can_resume(Context * ctx, int mode) {
 }
 
 /*
+ * ContextReset service: device reset through the TAS DEVICE_CONNECT
+ * command with the RESET_AND_HALT feature (option 0x0003, M17 mechanism:
+ * a repeated DC on an active session performs the reset; DBGSR is left
+ * with DE=1 + HALT per M17b).
+ *
+ * params->suspend: non-zero = the context stays suspended after the reset,
+ * zero = run after the reset (the reference agent's "Reset" behavior).
+ */
+static int aurix_reset(Context * ctx, const ResetParams * params) {
+    int core = EXT(ctx)->core_index;
+    uint16_t feat = 0;
+    uint32_t dtype = 0;
+    uint8_t e = 0;
+
+    if (!g_attached) {
+        errno = ERR_UNSUPPORTED;
+        return -1;
+    }
+
+    if (tas_device_connect(&g_tas, 0x0003, &feat, &dtype, &e) != 0 ||
+        e != TAS_ERR_OK) {
+        set_errno(ERR_OTHER, "TAS device reset (RESET_AND_HALT) failed");
+        return -1;
+    }
+    /* Note: the device reboots after the reset, so CSFR accesses fail for
+     * a short window (M17: transient read failures).  Verification and the
+     * run release are therefore best-effort here - the core state monitor
+     * (aurix_monitor) tracks the real state and reports the transitions. */
+    trace(LOG_ALWAYS, "AURIX: core %d device reset performed (DC 0x0003)", core);
+
+    if (params == NULL || params->suspend) {
+        /* stay halted after the reset */
+        if (!ctx->stopped) post_async_stop_event(ctx);
+    }
+    else {
+        /* release the halt (M17b: DBGSR run write keeps DE=1) - retry
+         * through the reboot window, tolerate transient failures */
+        int tries;
+        for (tries = 0; tries < 20; tries++) {
+            if (core_run(core) == 0) break;
+        }
+        send_context_started_event(ctx);
+    }
+    return 0;
+}
+
+/*
  * SPR local -> global alias translation (M20 calibration): the local
  * scratchpad windows are CPU private; the debug interface sees the
  * global bus aliases only.
@@ -1065,6 +1113,10 @@ static void aurix_init_event(void * args) {
         ctx->ref_count = 1;
         g_core_ctx[i] = ctx;
         send_context_created_event(ctx);
+
+        /* ContextReset: the extension sends type "reset" (lowercase) */
+        add_reset(ctx, "reset", "Device reset (reset and halt, TAS DC 0x0003)",
+                  aurix_reset);
 
         /* report the halted state and request the intercept */
         ctx->stopped = 1;

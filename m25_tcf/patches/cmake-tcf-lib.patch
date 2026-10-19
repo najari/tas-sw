@@ -21,7 +21,7 @@ index c7a0c1d..de03079 100644
  # remove non-library files
  file(GLOB TCF_MAIN_REL RELATIVE ${TCF_BASE_DIR}
  	${TCF_BASE_DIR}/tcf/main/main*.c)
-@@ -89,6 +101,17 @@ endif()
+@@ -89,6 +101,18 @@ endif()
  include_directories(${TCF_BASE_DIR} ${TCF_BASE_DIR}/system/${TCF_OPSYS} ${TCF_BASE_DIR}/machine/${TCF_MACHINE})
  
  add_library(${TCF_LIB_NAME} ${TCF_LIB_TYPE} ${TCF_SRCS})
@@ -34,7 +34,8 @@ index c7a0c1d..de03079 100644
 +    ENABLE_ELF=1
 +    ENABLE_PE=0
 +    ENABLE_SymbolsProxy=0
-+    ENABLE_RCBP_TEST=0)
++    ENABLE_RCBP_TEST=0
++    SERVICE_ContextReset=1)
 +endif()
  find_package(Threads)
  target_link_libraries(${TCF_LIB_NAME} Threads::Threads)
