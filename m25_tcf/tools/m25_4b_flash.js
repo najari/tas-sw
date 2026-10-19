@@ -475,6 +475,28 @@ async function doReset(suspend) {
     process.exit(0);
 }
 
+async function doReg(idx, val) {
+    if (val === undefined) {
+        const v = await regGet(idx);
+        console.log(`R${idx} = 0x${(v >>> 0).toString(16)}`);
+    } else {
+        await regSet(idx, val);
+        const v = await regGet(idx);
+        console.log(`R${idx} <- 0x${(val >>> 0).toString(16)} (readback 0x${(v >>> 0).toString(16)})`);
+    }
+    process.exit(0);
+}
+
+async function doBpSet(addr) {
+    const r = await cmdRaw('Breakpoints', 'set', [{
+        Location: '0x' + (addr >>> 0).toString(16),
+        AccessMode: 4,
+        ContextIds: [CORE],
+    }]);
+    console.log(`bpset 0x${(addr >>> 0).toString(16)}:`, JSON.stringify(r.slice(0, 2)));
+    process.exit(0);
+}
+
 (async () => {
     await sleep(300);
     const c = (process.argv[2] || '').toLowerCase();
@@ -488,8 +510,10 @@ async function doReset(suspend) {
         else if (c === 'verify') await doVerify(num(process.argv[3], 0) >>> 0, process.argv[4]);
         else if (c === 'restore') await doRestore(process.argv[3], num(process.argv[4], 0) >>> 0);
         else if (c === 'stop') await doStop();
+        else if (c === 'bpset') await doBpSet(num(process.argv[3],0) >>> 0);
         else if (c === 'bp') await doBp();
         else if (c === 'bpclear') await doBpClear();
+        else if (c === 'reg') await doReg(num(process.argv[3],0), process.argv[4] !== undefined ? num(process.argv[4],0) : undefined);
         else if (c === 'reset') await doReset(process.argv[3] !== 'run');
         else if (c === 'resume') await doResume();
         else if (c === 'w32') await doW32(num(process.argv[3],0), num(process.argv[4],0));
