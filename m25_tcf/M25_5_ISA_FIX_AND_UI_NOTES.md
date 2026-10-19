@@ -35,9 +35,43 @@
   **디버그 정보 포함 ELF**를 launch.json `program`에 지정
   (그러면 소스 스텝 추적 + 디스어셈블리 범위 클리핑도 통과)
 
+## 3. 소스 레벨 디버깅 완성 — RAM 데모 라이브 실증 (2026-10-19)
+
+자연 프로그램(0x8003xxxx)은 대응 ELF가 없어 소스 표시가 불가하므로,
+**일치하는 ELF가 있는 RAM 데모**(`m25_pspr.elf`, PSPR 0x70100000)로
+소스 레벨 전 구간을 UI에서 재실증했다 (M25-3 시퀀스 재사용).
+
+**시퀀스** (launch.json `program` = `m25_pspr.elf` → 세션 재시작 → 코어 정지):
+
+1. `tools/m25_3_ram_load.js`: 상태 저장(40레지스터 + DSPR/PSPR 8KB) →
+   .text(180B) PSPR 적재(MATCH) → PC=main(0x7010003A), SP=0x7000C000, ICR.IE=0
+2. 에디터 line 5에 소스 BP(F9) → 확장이 DWARF로 0x7010000C 해석
+   (탭에 `add(int, int)` 표시) ✓
+3. F5 재개 → **PAUSED ON BREAKPOINT** (PC=0x7010000C) ✓
+
+**UI 실증** (`evidence/ui_rehearsal/34~39`):
+
+| 항목 | 결과 |
+|---|---|
+| Call Stack | `add — m25_elf_test.c:5` + `main — m25_elf_test.c:15` (함수명+소스라인) ✓ |
+| 에디터 | 현재 라인 하이라이트 + 실행 화살표 ✓ |
+| Locals | add에서 `a=0,b=0` → main 복귀 후 `i=0` (프레임별 갱신) ✓ |
+| Disassembly | 디코딩 + 현재 명령 하이라이트(0x7010000C) ✓ |
+| 스텝(F10×3) | 0x0C→0x10→0x14→0x16(ret)→**0x7010005C(main)** — 에디터가 line 5→15로 이동 ✓ |
+| F11 | 스텝인 정상(1명령) ✓ |
+| 호스트 프레임 | FP1=0x8003xxxx(원본 PCXI)는 "Unknown Source" — 정상(ELF 범위 밖) ✓ |
+
+**복원** (`tools/m25_3_ram_restore.js`): 레지스터 40/40 + 두 영역 MATCH,
+PC=0x8003A332(입력값) ✓ → 코어1/2 재개(`tools/m25_5_resume_cores.js`) →
+**3코어 실행(자연 상태) 복귀** ✓.
+
+**남은 조건**: 자연 프로그램(사용자 앱, main=0x8003A328)에서 같은 경험을 하려면
+해당 빌드의 **디버그 정보 포함 ELF**를 `program`에 지정하면 된다 (메커니즘 동일).
+
 ## 재현 도구
 
 - `tools/m25_5_disasm_isa_test.js` — ISA 케이스 검증 (확장과 동일 요청)
 - `tools/m25_5_frames_raw.js` — StackTrace 프레임 컨텍스트 JSON 덤프
 - `tools/m25_5_sym_query.js` — `Symbols findByAddr` 조회
 - `tools/m25_5_ctx_tree.js` — 컨텍스트 트리 조회 (Processes.getChildren)
+- `tools/m25_5_resume_cores.js` — 코어 1/2 재개 (자연 상태 복원)
