@@ -50,6 +50,29 @@
   (운영 플로우는 원본과 동일하게 "플래시 → 리셋 → 실행")
 - 다음: ELF 로더블 섹션 자동 추출 + 부분 섹터 read-modify-write + 원본 `-f` 플로우 통합
 
+## 6. M25-4b2 진행 (2026-10-19 후속): ELF 굽기 플로우
+
+**구현 완료** (`tools/m25_4b_flash.js` 확장):
+- ELF32 파서(PT_LOAD 추출) → PFLASH 세그먼트(0x80000000-0x805FFFFF) 필터
+- 16KB 논리 섹터 단위 그룹핑 + **read-modify-write** 이미지 구성 +
+  내용이 같으면 skip
+- 쓰기 전 **섹터 백업 자동 저장** (`<elf>.sector_<addr>.bak`) +
+  `flashrestore <elf>`(백업에서 복원)
+- `flash <elf> [--dry-run]` 명령
+- **코어1/2 정지** 후 플래시(앱의 코어 간 모니터 억제) + 3코어 상태 저장/복원
+- `reset [run]` 명령(ContextReset 통합 — 리셋이 WDT를 UCB 기본 상태로 되돌림)
+- 버그 수정: JS int32 비트연산으로 섹터 주소가 음수가 되던 문제(>>> 0)
+- 로더 보강: ENDINIT 대기 **상한**(행 방지), magic 선기록, WDT 비활성화는
+  best-effort(앱이 hidden 비밀번호를 쓰면 no-op → **리셋 선행**이 정석)
+
+**현재 블로커**: 리셋 직후 상태에서 로더 기동(코어 재지향)이 되지 않는 문제
+(리셋+홀트 후 RunControl resume 미적용 — DBGSR run 쓰기는 TCF 메모리 경로로
+불가). 앞서의 성공 체인(정상 실행 상태에서 suspend→load)은 재현됨 ✓ —
+다음 세션에서 OCDS 상태별 resume 경로를 정리 필요.
+
+**타깃 무결**: 테스트 섹터(0x805F0000) 전부 0x00 유지 ✓ (실패 시도 중 쓰기 없음 ✓),
+앱 정상 실행 ✓.
+
 ## 5. 산출물
 
 - `flasher/m25_flash_loader.{c,ld,bin}` + `flasher/m25_flash_loader_build.ps1`

@@ -91,18 +91,24 @@ static void wait_unbusy(void)
 
 /* ---- watchdog handling (standard flasher practice) ---- */
 
-/* clear ENDINIT of a WDT CON0 (returns password used) */
-static u32 wdt_clear_endinit(volatile u32 *con0_reg)
+/* clear ENDINIT of a WDT CON0; bounded wait (the password field may read back
+ * hidden/zero when the application configured it - never hang) */
+static int wdt_clear_endinit(volatile u32 *con0_reg)
 {
     u32 con0 = *con0_reg;
     u32 pw   = (con0 >> 2) & 0x3FFFu;
     u32 rel  = con0 & 0xFFFF0000u;
+    u32 i;
     if (con0 & (1u << 1))                       /* LCK set: password access pattern */
         *con0_reg = (1u << 0) | (0u << 1) | (pw << 2) | rel;
     *con0_reg = (0u << 0) | (1u << 1) | (pw << 2) | rel;   /* ENDINIT=0, LCK=1 */
     dsync();
-    while (*con0_reg & 1u) { }                  /* wait until ENDINIT is cleared */
-    return pw;
+    for (i = 0u; i < 200000u; i++) {
+        if ((*con0_reg & 1u) == 0u) {
+            return 1;                           /* ENDINIT cleared */
+        }
+    }
+    return 0;                                   /* could not clear (password hidden) */
 }
 
 static void wdt_set_endinit(volatile u32 *con0_reg, u32 pw)
@@ -115,36 +121,32 @@ static void wdt_set_endinit(volatile u32 *con0_reg, u32 pw)
 /* disable the CPU0 watchdog and the safety watchdog (like professional flashers) */
 static void wdt_disable(void)
 {
-    u32 pw;
-    pw = wdt_clear_endinit(&WDTCPU0_CON0);
-    WDTCPU0_CON1 = WDTCPU0_CON1 | (1u << 3);   /* DR = 1 (disable request) */
-    wdt_set_endinit(&WDTCPU0_CON0, pw);
-    pw = wdt_clear_endinit(&WDTS_CON0);
-    WDTS_CON1 = WDTS_CON1 | (1u << 3);         /* DR = 1 */
-    wdt_set_endinit(&WDTS_CON0, pw);
+    u32 con0 = WDTCPU0_CON0;
+    u32 pw   = (con0 >> 2) & 0x3FFFu;
+    if (wdt_clear_endinit(&WDTCPU0_CON0)) {
+        WDTCPU0_CON1 = WDTCPU0_CON1 | (1u << 3);   /* DR = 1 (disable request) */
+        wdt_set_endinit(&WDTCPU0_CON0, pw);
+    }
+    con0 = WDTS_CON0;
+    pw   = (con0 >> 2) & 0x3FFFu;
+    if (wdt_clear_endinit(&WDTS_CON0)) {
+        WDTS_CON1 = WDTS_CON1 | (1u << 3);         /* DR = 1 */
+        wdt_set_endinit(&WDTS_CON0, pw);
+    }
 }
 
 /* ---- safety ENDINIT handling (SCU WDTS) ---- */
 
 static void clear_endinit(void)
 {
-    u32 con0 = WDTS_CON0;
-    u32 pw   = (con0 >> 2) & 0x3FFFu;
-    u32 rel  = con0 & 0xFFFF0000u;
-    if (con0 & (1u << 1))                       /* LCK set: password access pattern */
-        WDTS_CON0 = (1u << 0) | (0u << 1) | (pw << 2) | rel;
-    WDTS_CON0 = (0u << 0) | (1u << 1) | (pw << 2) | rel;   /* ENDINIT=0, LCK=1 */
-    dsync();
-    while (WDTS_CON0 & 1u) { }                  /* wait until ENDINIT is cleared */
+    wdt_clear_endinit(&WDTS_CON0);
 }
 
 static void set_endinit(void)
 {
     u32 con0 = WDTS_CON0;
     u32 pw   = (con0 >> 2) & 0x3FFFu;
-    u32 rel  = con0 & 0xFFFF0000u;
-    WDTS_CON0 = (1u << 0) | (1u << 1) | (pw << 2) | rel;   /* ENDINIT=1, LCK=1 */
-    dsync();
+    wdt_set_endinit(&WDTS_CON0, pw);
 }
 
 /* ---- operations ---- */
@@ -189,8 +191,10 @@ void _start(void)
     MB[MB_DONE]     = 0u;
     MB[MB_PROGRESS] = 0u;
     MB[MB_CMD]      = 0u;
-    wdt_disable();                 /* stop the app watchdogs before flashing */
     MB[MB_MAGIC]    = MAGIC;
+    wdt_disable();   /* best effort: bounded waits, cannot hang */
+    /* NOTE: if the application configured a hidden WDT password, the disable is
+     * a no-op; the host can reset the device first (UCB default password). */
 
     for (;;) {
         u32 cmd = MB[MB_CMD];

@@ -147,7 +147,14 @@ async function doSave() {
         regions.push({ base: r.base, size: r.size, b64: mem.toString('base64') });
         console.log(`  saved ${mem.length} bytes @0x${r.base.toString(16)}`);
     }
-    fs.writeFileSync(STATE_FILE, JSON.stringify({ core: CORE, wasRunning, regs, regions }));
+    /* remember core1/core2 run states (they must be halted while flashing) */
+    const otherCores = [];
+    for (const c of ['core1', 'core2']) {
+        const st = j(await cmd('RunControl', 'getState', c));
+        const running = (st === false || st === 'false' || st === 0);
+        otherCores.push({ core: c, wasRunning: running });
+    }
+    fs.writeFileSync(STATE_FILE, JSON.stringify({ core: CORE, wasRunning, regs, regions, otherCores }));
     console.log(`saved 40 registers + ${regions.length} regions (wasRunning=${wasRunning}) -> ${STATE_FILE}`);
     process.exit(0);
 }
@@ -158,6 +165,16 @@ async function doLoad() {
     await memWrite(PSPR, code);
     await regSet(0, PSPR);          /* PC = loader entry */
     await regSet(27, 0x7000C000);   /* A10 = SP (safe DSPR area) */
+    /* halt core1/core2 as well: the application may reset the device when
+     * core0 stops responding (cross-core monitor) */
+    for (const c of ['core1', 'core2']) {
+        try {
+            await cmd('RunControl', 'suspend', c);
+            console.log(`  ${c} suspended`);
+        } catch (e) {
+            console.log(`  ${c} suspend: ${e.message}`);
+        }
+    }
     const st = j(await cmd('RunControl', 'getState', CORE));
     console.log('core state before resume:', st);
     await cmd('RunControl', 'resume', CORE, 0, 1);
@@ -259,6 +276,18 @@ async function doStop() {
             console.log('core was running before - resuming');
             await cmd('RunControl', 'resume', CORE, 0, 1);
         }
+        if (Array.isArray(st.otherCores)) {
+            for (const oc of st.otherCores) {
+                if (oc.wasRunning) {
+                    try {
+                        await cmd('RunControl', 'resume', oc.core, 0, 1);
+                        console.log(`${oc.core} resumed`);
+                    } catch (e) {
+                        console.log(`${oc.core} resume: ${e.message}`);
+                    }
+                }
+            }
+        }
     } else {
         console.log('no state file - registers not restored');
     }
@@ -306,6 +335,146 @@ async function doBpClear() {
     process.exit(0);
 }
 
+/* ---- ELF32 (little-endian, TriCore) program header parser ---- */
+function parseElf(buf) {
+    if (buf.length < 52 || buf[0] !== 0x7F || buf[1] !== 0x45 || buf[2] !== 0x4C || buf[3] !== 0x46) {
+        throw new Error('not an ELF file');
+    }
+    if (buf[4] !== 1 || buf[5] !== 1) throw new Error('expected ELF32 little-endian');
+    const phoff = buf.readUInt32LE(0x1C);
+    const phentsize = buf.readUInt16LE(0x2A);
+    const phnum = buf.readUInt16LE(0x2C);
+    const segs = [];
+    for (let i = 0; i < phnum; i++) {
+        const o = phoff + i * phentsize;
+        if (buf.readUInt32LE(o) !== 1) continue;          /* PT_LOAD */
+        const offset = buf.readUInt32LE(o + 4);
+        const paddr = buf.readUInt32LE(o + 12);
+        const filesz = buf.readUInt32LE(o + 16);
+        if (filesz === 0) continue;
+        segs.push({ paddr, filesz, data: buf.subarray(offset, offset + filesz) });
+    }
+    return segs;
+}
+const PFLASH_CACHED_START = 0x80000000, PFLASH_CACHED_END = 0x805FFFFF;
+const PFLASH_UNCACHED_START = 0xA0000000;
+const SECTOR_SIZE = 0x4000;
+const toUncached = (a) => ((((a >>> 0) >>> 24) === 0x80) ? ((a >>> 0) + 0x20000000) : (a >>> 0));
+const inPflash = (a) => (a >= PFLASH_CACHED_START && a <= PFLASH_CACHED_END);
+const sectorBaseOf = (a) => ((a & ~(SECTOR_SIZE - 1)) >>> 0);
+
+async function doFlash(elfPath, opts) {
+    const buf = fs.readFileSync(elfPath);
+    const segs = parseElf(buf).filter((s) => inPflash(s.paddr));
+    if (segs.length === 0) {
+        console.log('no PFLASH segments in this ELF');
+        process.exit(1);
+    }
+    console.log(`=== flash ${elfPath} ===`);
+    for (const s of segs) {
+        console.log(`  PT_LOAD: 0x${s.paddr.toString(16)}..0x${(s.paddr + s.filesz - 1).toString(16)} (${s.filesz} bytes)`);
+    }
+    /* group ELF bytes per 16 KiB sector */
+    const sectors = new Map();
+    for (const s of segs) {
+        for (let off = 0; off < s.filesz; off++) {
+            const addr = s.paddr + off;
+            const secBase = sectorBaseOf(addr);
+            let e = sectors.get(secBase);
+            if (!e) { e = { base: secBase, patches: [] }; sectors.set(secBase, e); }
+            e.patches.push({ addr, byte: s.data[off] });
+        }
+    }
+    const list = [...sectors.values()].sort((a, b) => a.base - b.base);
+    console.log(`sectors to touch: ${list.length}`);
+    let flashed = 0, skipped = 0;
+    for (const e of list) {
+        const uncached = toUncached(e.base);
+        const existing = await memRead(uncached, SECTOR_SIZE);
+        const image = Buffer.from(existing);
+        for (const p of e.patches) image[p.addr - e.base] = p.byte;
+        if (image.equals(existing)) {
+            console.log(`0x${e.base.toString(16)}: already matches - skip`);
+            skipped++;
+            continue;
+        }
+        /* backup before touching */
+        const bak = `${elfPath}.sector_${e.base.toString(16)}.bak`;
+        fs.writeFileSync(bak, existing);
+        console.log(`0x${e.base.toString(16)}: backup -> ${bak}`);
+        if (opts.dryRun) { console.log('  (dry-run: not writing)'); continue; }
+        let r = await runCmd(CMD.ERASE, uncached, 1, 0);
+        if (r.status !== 0) { console.log(`  ERASE FAILED status=0x${r.status.toString(16)}`); process.exit(1); }
+        for (let off = 0; off < SECTOR_SIZE; off += 0x2000) {
+            const chunk = image.subarray(off, off + 0x2000);
+            await memWrite(PAYLOAD, chunk);
+            r = await runCmd(CMD.PROGRAM, uncached + off, chunk.length, PAYLOAD);
+            if (r.status !== 0) { console.log(`  PROGRAM FAILED @+0x${off.toString(16)} status=0x${r.status.toString(16)}`); process.exit(1); }
+        }
+        const rb = await memRead(uncached, SECTOR_SIZE);
+        if (!rb.equals(image)) {
+            let bad = -1;
+            for (let i = 0; i < image.length; i++) if (rb[i] !== image[i]) { bad = i; break; }
+            console.log(`  VERIFY MISMATCH @+0x${bad.toString(16)}`);
+            process.exit(1);
+        }
+        console.log(`0x${e.base.toString(16)}: erased+programmed+verified OK`);
+        flashed++;
+    }
+    console.log(`flash done: ${flashed} sector(s) written, ${skipped} skipped`);
+    process.exit(0);
+}
+
+async function doFlashRestore(elfPath) {
+    /* restore all sector backups taken by doFlash */
+    const dir = require('path').dirname(elfPath);
+    const prefix = require('path').basename(elfPath) + '.sector_';
+    const files = fs.readdirSync(dir).filter((f) => f.startsWith(prefix) && f.endsWith('.bak'));
+    if (files.length === 0) { console.log('no sector backups found'); process.exit(1); }
+    for (const f of files.sort()) {
+        const secBase = parseInt(f.slice(prefix.length, -4), 16);
+        const data = fs.readFileSync(require('path').join(dir, f));
+        console.log(`restore 0x${secBase.toString(16)} <- ${f} (${data.length} bytes)`);
+        let r = await runCmd(CMD.ERASE, toUncached(secBase), 1, 0);
+        if (r.status !== 0) { console.log(`  ERASE FAILED status=0x${r.status.toString(16)}`); process.exit(1); }
+        for (let off = 0; off < data.length; off += 0x2000) {
+            const chunk = data.subarray(off, off + 0x2000);
+            await memWrite(PAYLOAD, chunk);
+            r = await runCmd(CMD.PROGRAM, toUncached(secBase) + off, chunk.length, PAYLOAD);
+            if (r.status !== 0) { console.log(`  PROGRAM FAILED status=0x${r.status.toString(16)}`); process.exit(1); }
+        }
+        const rb = await memRead(toUncached(secBase), data.length);
+        console.log(rb.equals(data) ? '  verify OK' : '  VERIFY MISMATCH');
+    }
+    console.log('restore done');
+    process.exit(0);
+}
+
+async function doResume() {
+    const st = j(await cmd('RunControl', 'getState', CORE));
+    console.log('state before resume:', JSON.stringify(st));
+    const r = await cmd('RunControl', 'resume', CORE, 0, 1);
+    console.log('resume ->', JSON.stringify(r));
+    await sleep(500);
+    const st2 = j(await cmd('RunControl', 'getState', CORE));
+    console.log('state after resume:', JSON.stringify(st2));
+    process.exit(0);
+}
+
+async function doW32(addr, val) {
+    const b = Buffer.alloc(4); b.writeUInt32LE(val >>> 0, 0);
+    await memWrite(addr >>> 0, b);
+    console.log(`wrote 0x${(val >>> 0).toString(16)} to 0x${(addr >>> 0).toString(16)}`);
+    process.exit(0);
+}
+
+async function doReset(suspend) {
+    const r = await cmdRaw('ContextReset', 'reset', CORE, 'reset', { Suspend: suspend });
+    console.log(`reset (suspend=${suspend}):`, JSON.stringify(r.slice(0, 3)));
+    await sleep(1500);
+    process.exit(0);
+}
+
 (async () => {
     await sleep(300);
     const c = (process.argv[2] || '').toLowerCase();
@@ -321,6 +490,11 @@ async function doBpClear() {
         else if (c === 'stop') await doStop();
         else if (c === 'bp') await doBp();
         else if (c === 'bpclear') await doBpClear();
+        else if (c === 'reset') await doReset(process.argv[3] !== 'run');
+        else if (c === 'resume') await doResume();
+        else if (c === 'w32') await doW32(num(process.argv[3],0), num(process.argv[4],0));
+        else if (c === 'flash') await doFlash(process.argv[3], { dryRun: process.argv.includes('--dry-run') });
+        else if (c === 'flashrestore') await doFlashRestore(process.argv[3]);
         else if (c === 'scan') await doScan(num(process.argv[3], 0x80000000) >>> 0, num(process.argv[4], 8));
         else {
             console.log('usage: save | load | erase <addr> [count] | program <addr> <file> | read <addr> <size> <out> | verify <addr> <file> | restore <file> <addr> | stop');
