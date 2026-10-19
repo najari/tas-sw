@@ -18,14 +18,10 @@ Push-Location (Split-Path $Driver)
 try {
     function Step([string]$name, [string[]]$argv) {
         Write-Host "=== $name ===" -ForegroundColor Cyan
-        $p = Start-Process -FilePath node -ArgumentList (@($Driver) + $argv) `
-             -RedirectStandardOutput '_selftest.log' -RedirectStandardError '_selftest.err' -PassThru -NoNewWindow
-        $null = $p.WaitForExit(240000)
-        if (-not $p.HasExited) { $p.Kill(); throw "$name : TIMEOUT" }
-        Get-Content '_selftest.log' -ErrorAction SilentlyContinue | Select-Object -Last 4 | ForEach-Object { "   $_" }
-        $err = Get-Content '_selftest.err' -ErrorAction SilentlyContinue | Select-Object -First 2
-        if ($err) { $err | ForEach-Object { "   ERR: $_" } }
-        if ($p.ExitCode -ne 0) { throw "$name failed (exit $($p.ExitCode))" }
+        $out = & node (@($Driver) + $argv) 2>&1 | Out-String
+        $code = $LASTEXITCODE
+        $out.Trim().Split("`n") | Where-Object { $_.Trim() -ne '' } | Select-Object -Last 5 | ForEach-Object { "   $_" }
+        if ($code -ne 0) { throw "$name failed (exit $code)" }
     }
 
     Step '1. save (state snapshot)'            @('save')

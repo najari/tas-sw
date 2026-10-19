@@ -1211,8 +1211,27 @@ static void aurix_init_event(void * args) {
     }
     if (tas_device_connect(&g_tas, 0x0000, &feat, &dtype, &e) != 0 ||
         e != TAS_ERR_OK) {
-        trace(LOG_ALWAYS, "AURIX: DEVICE_CONNECT failed (tas_err=0x%02x)", e);
-        return;
+        /* Hot attach failed.  On some target states (e.g. after a power
+         * cycle, or while the application does not answer the JTAG idle
+         * scan) only a reset connect succeeds.  Retry with reset+halt
+         * (0x0003) on a fresh session - the reference agent also performs a
+         * device reset as part of the startup. */
+        trace(LOG_ALWAYS, "AURIX: hot attach failed (tas_err=0x%02x), retrying with reset+halt", e);
+        if (tas_session_start(&g_tas, g_targets[sel].identifier, &g_con, &e) != 0 ||
+            e != TAS_ERR_OK) {
+            trace(LOG_ALWAYS, "AURIX: SESSION_START (retry) failed (tas_err=0x%02x)", e);
+            return;
+        }
+        if (tas_set_device_key(&g_tas, TAS_ULO_HOT_ATTACH, NULL, 0, &e) != 0 ||
+            e != TAS_ERR_OK) {
+            trace(LOG_ALWAYS, "AURIX: SET_DEVICE_KEY (retry) failed (tas_err=0x%02x)", e);
+            return;
+        }
+        if (tas_device_connect(&g_tas, 0x0003, &feat, &dtype, &e) != 0 ||
+            e != TAS_ERR_OK) {
+            trace(LOG_ALWAYS, "AURIX: DEVICE_CONNECT (reset+halt) failed (tas_err=0x%02x)", e);
+            return;
+        }
     }
     g_attached = 1;
     trace(LOG_ALWAYS, "AURIX: attached to '%s' (device 0x%08X, max_rw %u)",
