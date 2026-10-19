@@ -126,3 +126,20 @@ AURIX: DEVICE_CONNECT failed (tas_err=0x20)
   → tas_server 재시작으로 해소 (운영 규칙: 에이전트 재시작 시 tas_server도 재시작)
 - 다음 후보: step 대량 count 기반 실행 / no-reset 플로우(hot attach) /
   DAS run을 대체하는 경로(예: BP 걸고 step 연속)
+
+## 9. DAS API 완전 규명 (2026-10-19 5차, M25-4c)
+
+- `das_api_load(version, *state)`: **v3/v4 성공**, v5 -> state=0x01000000 (버전 오류)
+  — 실호출 검증 완료 (PowerShell P/Invoke)
+- 반환 = **정보 구조체** (단순 함수 테이블이 아님):
+  ```
+  [0] -> "DAS Client DLL"   [1] -> "Infineon"   [2] = 0x03040302 (버전)
+  [3] -> "Apr 30 2026"      [4] = 0
+  [5]..[30] = 약 28개 함수 포인터 (DLL RVA 0x1000 ~ 0x1D50)
+  [31]+ = 데이터(문자열/상수)
+  ```
+- `das.dll` = **Windows 서비스** (익스포트: ServiceMain, SvchostPushServiceGlobals만)
+  → das_api.dll = 클라이언트 API, das.dll = DAS 서비스 본체
+- tas_server는 DAS DLL을 쓰지 않음 (FTD2XX 자체 구현) — 확인 완료
+- **다음**: 함수 포인터 28개의 역할 디스어셈블 -> C 테스트(디바이스 목록 조회)
+  -> **"AURDUINO" 인식 판정** (성공 시 에이전트 DAS API 백엔드 구현 착수)
