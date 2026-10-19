@@ -1216,7 +1216,7 @@ static void aurix_init_event(void * args) {
          * scan) only a reset connect succeeds.  Retry with reset+halt
          * (0x0003) on a fresh session - the reference agent also performs a
          * device reset as part of the startup. */
-        trace(LOG_ALWAYS, "AURIX: hot attach failed (tas_err=0x%02x), retrying with reset+halt", e);
+        trace(LOG_ALWAYS, "AURIX: hot attach failed (tas_err=0x%02x), retrying with reset", e);
         if (tas_session_start(&g_tas, g_targets[sel].identifier, &g_con, &e) != 0 ||
             e != TAS_ERR_OK) {
             trace(LOG_ALWAYS, "AURIX: SESSION_START (retry) failed (tas_err=0x%02x)", e);
@@ -1227,9 +1227,9 @@ static void aurix_init_event(void * args) {
             trace(LOG_ALWAYS, "AURIX: SET_DEVICE_KEY (retry) failed (tas_err=0x%02x)", e);
             return;
         }
-        if (tas_device_connect(&g_tas, 0x0003, &feat, &dtype, &e) != 0 ||
+        if (tas_device_connect(&g_tas, 0x0001, &feat, &dtype, &e) != 0 ||
             e != TAS_ERR_OK) {
-            trace(LOG_ALWAYS, "AURIX: DEVICE_CONNECT (reset+halt) failed (tas_err=0x%02x)", e);
+            trace(LOG_ALWAYS, "AURIX: DEVICE_CONNECT (reset) failed (tas_err=0x%02x)", e);
             return;
         }
     }
