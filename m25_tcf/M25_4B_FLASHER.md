@@ -115,3 +115,14 @@ AURIX: DEVICE_CONNECT failed (tas_err=0x20)
 - `flasher/m25_flash_loader.{c,ld,bin}` + `flasher/m25_flash_loader_build.ps1`
 - `tools/m25_4b_flash.js`
 - 도구 체인: `C:\Infineon\AURIX-Configuration-Studio-1.0.24\eclipse\tricore-gcc11\bin`
+
+## 8. RUNCMD 값 스윕 + 디바이스 단절 패턴 (2026-10-19 4차)
+
+- **RUNCMD(0xF000049C) 값 1/2 모두**: run → 부팅 (CSFR PC=0xa0031374)
+  — 값과 무관하게 **DAS 레벨 run의 의미가 "부팅"** (강제 halt 후에도 동일)
+- **step은 PC 존중** ✓ (0x70100000 → 02 → 04, 로더 실행) — 현재 유일한 작동 경로
+- **디바이스 단절 패턴**: 유휴 시 96초+ 안정 ✓ /
+  **에이전트 하드킬 → 스테일 TAS 세션 → 디바이스 목록 소실(count=0)** ✗
+  → tas_server 재시작으로 해소 (운영 규칙: 에이전트 재시작 시 tas_server도 재시작)
+- 다음 후보: step 대량 count 기반 실행 / no-reset 플로우(hot attach) /
+  DAS run을 대체하는 경로(예: BP 걸고 step 연속)
