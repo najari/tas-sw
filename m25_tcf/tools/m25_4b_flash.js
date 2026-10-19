@@ -506,6 +506,19 @@ async function doStep(mode) {
     process.exit(0);
 }
 
+async function doHalt() {
+    try {
+        await cmd('RunControl', 'suspend', CORE);
+        console.log('halt issued');
+    } catch (e) {
+        console.log('halt:', e.message);
+    }
+    await sleep(500);
+    const v = await memRead(0xF881FE08, 4);
+    console.log(`CSFR PC after halt = 0x${v.readUInt32LE(0).toString(16)}`);
+    process.exit(0);
+}
+
 (async () => {
     await sleep(300);
     const c = (process.argv[2] || '').toLowerCase();
@@ -524,6 +537,7 @@ async function doStep(mode) {
         else if (c === 'bpclear') await doBpClear();
         else if (c === 'reg') await doReg(num(process.argv[3],0), process.argv[4] !== undefined ? num(process.argv[4],0) : undefined);
         else if (c === 'reset') await doReset(process.argv[3] !== 'run');
+        else if (c === 'halt') await doHalt();
         else if (c === 'step') await doStep(num(process.argv[3],4));
         else if (c === 'resume') await doResume();
         else if (c === 'w32') await doW32(num(process.argv[3],0), num(process.argv[4],0));
