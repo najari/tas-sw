@@ -84,6 +84,32 @@
 
 **타깃 무결**: 테스트 섹터(0x805F0000) 전부 0x00 유지 ✓ (실패 시도 중 쓰기 없음 ✓).
 
+## 7. `-p` 타깃 옵션 구현 + DEVICE_CONNECT 진단 (2026-10-19 3차)
+
+**구현** (원본의 `-p "Board"` 옵션 파리티 — 그동안 "accepted (ignored)"였음):
+- `tcf/main/main.c`: `aurix_device_name` 전역 + `-p` 저장(무시 제거)
+- `system/aurix/tcf/context-aurix.c`: TAS 타깃 목록(`tas_get_targets`)에서
+  `-p` 이름과 매칭(`strcasecmp`/`strstr`) → **그 타깃으로 SESSION_START**,
+  목록 전체 로깅 + 미발견 시 명시적 실패
+- 검증(에이전트 로그 `-L`):
+  ```
+  AURIX: target [0] 'DAS JTAG AURDUINO 46YPEADW'   <- selected
+  ```
+
+**진단 도구**: `tools/m25_4b2_tas_probe.js` — tas_server(24817)에 직접
+SERVER_CONNECT(0x80)+GET_TARGETS(0x86) 질의 (4바이트 LE 길이 프레임,
+타깃 엔트리 88B: identifier[64]+type+id[4]+phys+nclient).
+결과: 타깃 목록/카운트 정상 ✓, `nclient` = 접속 클라이언트 수(에이전트 유무로 검증 ✓).
+
+**ELF 로드 불가 원인 규명** (에이전트 `-L` 로그):
+```
+AURIX: DEVICE_CONNECT failed (tas_err=0x20)
+```
+- 0x20 = `TAS_PL1_ERR_CMD_FAILED` — **DAS↔타깃 JTAG 통신 실패**(하드웨어 측)
+- 소프트웨어 경로는 전부 정상 ✓ (서버 접속/타깃 목록/세션/키/`-p` 선택)
+- 즉 ELF 심볼 로드(TCF MemoryMap) 이전 단계인 디바이스 접속에서 막힘 →
+  단일 USB(COM3+COM4+COM5+debug) 재열거/보드 재부팅 필요
+
 ## 5. 산출물
 
 - `flasher/m25_flash_loader.{c,ld,bin}` + `flasher/m25_flash_loader_build.ps1`

@@ -636,6 +636,7 @@ int context_can_resume(Context * ctx, int mode) {
  */
 extern const char * aurix_entry_label;   /* tcf/main/main.c: -e<label> */
 extern int aurix_flasher_used;           /* tcf/main/main.c: -f         */
+extern const char * aurix_device_name;   /* tcf/main/main.c: -p<name>   */
 
 static BreakpointInfo * g_entry_bp = NULL;
 
@@ -1145,6 +1146,7 @@ static void aurix_init_event(void * args) {
     uint16_t feat = 0;
     uint32_t dtype = 0;
     int i;
+    int sel = 0;
 
     (void)args;
     trace(LOG_ALWAYS, "AURIX: init event running");
@@ -1167,7 +1169,37 @@ static void aurix_init_event(void * args) {
         trace(LOG_ALWAYS, "AURIX: no target found");
         return;
     }
-    if (tas_session_start(&g_tas, g_targets[0].identifier, &g_con, &e) != 0 ||
+
+    /* Target selection: the -p option names the TAS target identifier
+     * (e.g. "DAS JTAG AURDUINO 46YPEADW").  Without -p the first target is
+     * used (the previous behaviour).  The list is always logged so a wrong
+     * or ambiguous setup is visible in the agent log. */
+    sel = 0;
+    if (aurix_device_name != NULL && aurix_device_name[0] != 0) {
+        int found = -1;
+        for (i = 0; i < g_ntargets; i++) {
+            const char * id = g_targets[i].identifier;
+            if (strcasecmp(id, aurix_device_name) == 0 ||
+                strstr(id, aurix_device_name) != NULL ||
+                strstr(aurix_device_name, id) != NULL) {
+                found = i;
+                break;
+            }
+        }
+        if (found < 0) {
+            trace(LOG_ALWAYS, "AURIX: requested target '%s' not found (%d visible):",
+                  aurix_device_name, g_ntargets);
+            for (i = 0; i < g_ntargets; i++)
+                trace(LOG_ALWAYS, "AURIX:   [%d] '%s'", i, g_targets[i].identifier);
+            return;
+        }
+        sel = found;
+    }
+    for (i = 0; i < g_ntargets; i++)
+        trace(LOG_ALWAYS, "AURIX: target [%d] '%s'%s", i, g_targets[i].identifier,
+              i == sel ? "   <- selected" : "");
+
+    if (tas_session_start(&g_tas, g_targets[sel].identifier, &g_con, &e) != 0 ||
         e != TAS_ERR_OK) {
         trace(LOG_ALWAYS, "AURIX: SESSION_START failed (tas_err=0x%02x)", e);
         return;
@@ -1184,7 +1216,7 @@ static void aurix_init_event(void * args) {
     }
     g_attached = 1;
     trace(LOG_ALWAYS, "AURIX: attached to '%s' (device 0x%08X, max_rw %u)",
-          g_targets[0].identifier, (unsigned)dtype,
+          g_targets[sel].identifier, (unsigned)dtype,
           (unsigned)g_con.pl0_max_num_rw);
 
     /* reference "OpenCore+Halt": halt every core and verify */

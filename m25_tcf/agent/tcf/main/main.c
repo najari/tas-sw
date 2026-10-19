@@ -115,6 +115,7 @@ static unsigned int idle_timeout;
  */
 const char * aurix_entry_label = NULL;
 int aurix_flasher_used = 0;
+const char * aurix_device_name = NULL;   /* -p: TAS target identifier (e.g. "DAS JTAG AURDUINO 46YPEADW") */
 static unsigned int idle_count;
 
 static void check_idle_timeout(void * args) {
@@ -402,7 +403,11 @@ int main(int argc, char ** argv) {
                     trace(LOG_ALWAYS, "AURIX: option -e %s (stop after reset)", s);
                     break;
 
-                case 'p':   /* target device name (aurix-debugger -p) */
+                case 'p':   /* target device name (-p): select the TAS target */
+                    aurix_device_name = s;
+                    trace(LOG_ALWAYS, "AURIX: option -p %s (target device)", s);
+                    break;
+
                 case 'b':   /* core number (-b) */
                 case 'r':   /* SVD file (-r) */
                 case 'K':   /* workspace (-K) */
