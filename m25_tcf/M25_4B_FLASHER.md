@@ -143,3 +143,17 @@ AURIX: DEVICE_CONNECT failed (tas_err=0x20)
 - tas_server는 DAS DLL을 쓰지 않음 (FTD2XX 자체 구현) — 확인 완료
 - **다음**: 함수 포인터 28개의 역할 디스어셈블 -> C 테스트(디바이스 목록 조회)
   -> **"AURDUINO" 인식 판정** (성공 시 에이전트 DAS API 백엔드 구현 착수)
+
+## 10. das_api.dll = 공식 TAS/DAS 클라이언트 API (2026-10-19 6차) - 결정적 발견
+
+- das_api.dll 문자열이 **tas_server와 동일한 TAS API 오류 세트**:
+  "ERROR: Wrong TAS API usage", "ERROR: Set acc_mode not supported for %s of addr %llX %s",
+  "ERROR: Could not read channel description from device", "ERROR: Target not connected" 등
+- 즉 **das_api.dll = 공식 TAS 클라이언트**(우리 aurix-tas.c가 손으로 구현한 와이어와 동일 프로토콜),
+  **tas_server = TAS 서버**(DAS 구현: FTD2XX -> AURDUINO 어댑터)
+- 아키텍처: `[das_api.dll/TAS 클라이언트] <-> [TAS 서버] <-> FTD2XX <-> AURDUINO <-> 타깃`
+- **두 가지 경로**:
+  (a) 에이전트가 das_api.dll(공식 클라이언트) 사용 - 여전히 TAS 서버 필요
+  (b) **das_api.dll -> 표준 DAS 서비스(das.dll)** - tas_server 제거 가능성
+      (표준 DAS가 AURDUINO를 인식하는지가 관건 - 다음 실험)
+- 다음: 28개 함수 역할 파악 -> 디바이스 목록 조회 테스트 -> AURDUINO 인식 판정
