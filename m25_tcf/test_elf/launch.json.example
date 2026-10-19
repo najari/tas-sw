@@ -1,0 +1,19 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "aurix-tcf",
+      "request": "launch",
+      "name": "ShieldBuddy TC275ED (DAS JTAG AURDUINO)",
+      "host": "127.0.0.1",
+      "port": 1534,
+      "autoStartAgent": true,
+      "program": "",
+      "workspace": "${workspaceFolder}",
+      "targetDevice": "DAS JTAG AURDUINO 46YPEADW",
+      "entryFunction": "",
+      "svdFile": "",
+      "enableConsoleLog": true
+    }
+  ]
+}

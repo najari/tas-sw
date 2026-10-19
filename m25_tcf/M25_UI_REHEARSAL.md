@@ -36,3 +36,33 @@
 
 원본 `aurix-debugger.exe`의 VS Code 디버깅 경험(시작·정지·스텝 3종·재개·일시정지·리셋)이
 **우리 TCF 에이전트로 UI 레벨에서 완전히 재현**됨을 확인. 확장은 수정 없이 원본용 그대로 사용.
+
+## 부록: Disassembly 뷰 규명 (2026-10-19 추가)
+
+**여는 방법** (VS Code 표준):
+1. **Call Stack에서 소스 없는 프레임 클릭** → 자동으로 Disassembly 뷰 열림 (실증 ✓)
+2. 에디터 우클릭 → "Open Disassembly View"
+3. Ctrl+Shift+P → "Debug: Open Disassembly View"
+
+**"Disassembly not available" 원인 규명**:
+확장 `debugProvider.js`의 `disassembleRequestAsync`가 디스어셈블리를
+**launch ELF의 실행 범위로 클리핑**한다:
+
+```js
+const execRange = this.findExecutableRangeForAddress(alignedBaseAddress);
+if (this.execRanges.length > 0 && !execRange) {
+    response.body = { instructions: [] };   // ← 빈 결과 → "not available"
+    return;
+}
+```
+
+- launch.json의 `program` = `m25_pspr.elf`(PSPR 0x70100000 영역) →
+  라이브 타깃 코드(0x8003xxxx PFLASH)는 범위 밖 → 빈 응답 ✗
+- **해결**: (a) `program`에 타깃과 일치하는 ELF 지정(원래 의도된 사용법),
+  또는 (b) `program`을 비워 클리핑 해제 — 테스트 워크스페이스는 (b)로 수정함
+- **에이전트(우리 디스어셈블러)는 정상** ✓ — M25-3에서 실타깃 코드
+  0x8003a140~ 디코딩 93% objdump 일치 검증 완료
+
+**UI 실증 (본 리허설)**: Call Stack에 FP0~FP4 **5프레임 표시** ✓
+(= CSA 스택 크롤이 UI에서 동작), 프레임 클릭 시 Disassembly 탭 자동 오픈 ✓
+
