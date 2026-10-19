@@ -1216,7 +1216,7 @@ static void aurix_init_event(void * args) {
          * scan) only a reset connect succeeds.  Retry with reset+halt
          * (0x0003) on a fresh session - the reference agent also performs a
          * device reset as part of the startup. */
-        trace(LOG_ALWAYS, "AURIX: hot attach failed (tas_err=0x%02x), retrying with reset", e);
+        trace(LOG_ALWAYS, "AURIX: hot attach failed (tas_err=0x%02x), retrying with reset+halt", e);
         if (tas_session_start(&g_tas, g_targets[sel].identifier, &g_con, &e) != 0 ||
             e != TAS_ERR_OK) {
             trace(LOG_ALWAYS, "AURIX: SESSION_START (retry) failed (tas_err=0x%02x)", e);
@@ -1227,9 +1227,9 @@ static void aurix_init_event(void * args) {
             trace(LOG_ALWAYS, "AURIX: SET_DEVICE_KEY (retry) failed (tas_err=0x%02x)", e);
             return;
         }
-        if (tas_device_connect(&g_tas, 0x0001, &feat, &dtype, &e) != 0 ||
+        if (tas_device_connect(&g_tas, 0x0003, &feat, &dtype, &e) != 0 ||
             e != TAS_ERR_OK) {
-            trace(LOG_ALWAYS, "AURIX: DEVICE_CONNECT (reset) failed (tas_err=0x%02x)", e);
+            trace(LOG_ALWAYS, "AURIX: DEVICE_CONNECT (reset+halt) failed (tas_err=0x%02x)", e);
             return;
         }
     }
@@ -1238,7 +1238,10 @@ static void aurix_init_event(void * args) {
           g_targets[sel].identifier, (unsigned)dtype,
           (unsigned)g_con.pl0_max_num_rw);
 
-    /* reference "OpenCore+Halt": halt every core and verify */
+    /* reference "OpenCore+Halt": halt every core and verify.
+     * After a reset connect the device reboots: CSFR/register accesses fail
+     * for a short window (M17/M25-4a) - wait before halting the cores. */
+    usleep(300000);   /* 300 ms */
     for (i = 0; i < AURIX_MAX_CORES; i++) {
         if (core_stop(i) != 0)
             trace(LOG_ALWAYS, "AURIX: core %d halt at attach failed", i);
