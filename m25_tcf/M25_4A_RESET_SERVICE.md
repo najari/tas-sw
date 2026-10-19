@@ -36,14 +36,47 @@ reset(suspend=false): err "" → 재부팅 후 RUNNING ✓ (0x8003a146 -> 0x8003
 - reset+run 후 프로그램이 정상 재실행 = 자연 상태 복원 ✓
 - `ContextReset getCapabilities` → `[{"Type":"reset",...}]` ✓
 
-## 4. 잔여 (다음 조각)
+## 4. 엔트리 정지 BP (-e / -f) — 완료
 
-- `-e<label>` / `-f` 처리: 리셋 후 **엔트리 함수(main/_START) 정지 BP** —
-  ELF 심볼(M25-3) + HW BP(M25-2)로 구현 예정
-- 자체 플래셔(M25-4b)는 원본에 없는 별도 기능 (보류)
+원본의 "label to stop after reset" 플로우 구현:
+
+- `tcf/main/main.c`: `-e<label>` → `aurix_entry_label` 저장, `-f` → `aurix_flasher_used=1`
+  (기존엔 수용·무시였음)
+- 백엔드(`context-aurix.c`):
+  - 리셋 후 **재부팅 창(≈100ms)을 기다린 뒤**(비동기 후처리, `post_event_with_delay`)
+  - `find_symbol_by_name`으로 `-e` 라벨(또는 `-f`면 `_START`) 주소 해석
+  - `create_eventpoint_ext`로 **임시 HW BP** 심기 (스텝머신과 동일 패턴)
+  - halt 해제(run) → 프로그램 부팅·실행
+  - BP 히트 시 콜백: "entry function met" + **BP 자동 제거**(원본의
+    "Removing stop at function breakpoint")
+
+### 라이브 검증 (`tools/m25_4_entrybp_test.js`)
+
+스텁 ELF(`main` = 0x8003A328, 라이브 프로그램 루프 주소)를 매핑 후:
+
+```
+MemoryMap set err: ""  (main 심볼 제공)
+reset err: ""
+PC after reset+entry-BP: 0x8003a328 -> 0x8003a328  (main에서 정지 ✓)
+
+에이전트 로그:
+  AURIX: core 0 device reset performed (DC 0x0003)
+  AURIX: entry function found at address: 8003a328 (BP planted)
+  AURIX: entry function met (stop-at-function breakpoint)
+```
+
+리셋(17.060) → BP 심기(17.166, 재부팅 창 통과) → 히트(17.197) — 원본의
+시작 플로우(리셋 → 엔트리 정지)가 완전히 재현됨 ✓
 
 ## 5. 산출물
 
-- `agent/system/aurix/tcf/context-aurix.c` — `aurix_reset` + 등록
+- `agent/system/aurix/tcf/context-aurix.c` — `aurix_reset` + 엔트리 BP + 등록
+- `agent/tcf/main/main.c` — `-e`/`-f` 저장
 - `cmake-tcf-lib.txt` — `SERVICE_ContextReset=1`
-- `tools/m25_4_reset_test.js`, `tools/m25_4_reset_verify.js`
+- `tools/m25_4_reset_test.js`, `tools/m25_4_reset_verify.js`,
+  `tools/m25_4_entrybp_test.js`, `tools/m25_4_entry_test.elf`(스텁)
+
+## 6. 잔여
+
+- 자체 플래셔(M25-4b)는 원본에 없는 별도 기능 (보류)
+- `aurix_entry_fn` TCF 파라미터 전달(launcher 연동) — 선택

@@ -40,12 +40,15 @@
 #include <tcf/framework/cpudefs.h>
 #include <tcf/framework/errors.h>
 #include <tcf/framework/events.h>
+#include <tcf/framework/json.h>
 #include <tcf/framework/myalloc.h>
+#include <tcf/framework/streams.h>
 #include <tcf/framework/trace.h>
 #include <tcf/services/breakpoints.h>
 #include <tcf/services/contextreset.h>
 #include <tcf/services/memorymap.h>
 #include <tcf/services/runctrl.h>
+#include <tcf/services/symbols.h>
 
 #include <tcf/cpudefs-mdep.h>
 
@@ -625,6 +628,109 @@ int context_can_resume(Context * ctx, int mode) {
 }
 
 /*
+ * "Stop after reset" (aurix-debugger -e<label>, or _START with -f): after
+ * a device reset the agent plants a temporary breakpoint at the entry
+ * function and runs until it is met.  The reference agent logs
+ * "entry function found at address" / "entry function met" /
+ * "Removing stop at function breakpoint".
+ */
+extern const char * aurix_entry_label;   /* tcf/main/main.c: -e<label> */
+extern int aurix_flasher_used;           /* tcf/main/main.c: -f         */
+
+static BreakpointInfo * g_entry_bp = NULL;
+
+static void aurix_entry_bp_hit(Context * ctx, void * args) {
+    (void)ctx;
+    (void)args;
+    trace(LOG_ALWAYS, "AURIX: entry function met (stop-at-function breakpoint)");
+    if (g_entry_bp != NULL) {
+        /* the reference agent: "Removing stop at function breakpoint" */
+        destroy_eventpoint(g_entry_bp);
+        g_entry_bp = NULL;
+    }
+}
+
+static BreakpointInfo * aurix_create_entry_bp(ContextAddress addr, Context * ctx) {
+    static const char * attr_list[] = { BREAKPOINT_ENABLED, BREAKPOINT_LOCATION, BREAKPOINT_SERVICE };
+    BreakpointAttribute * attrs = NULL;
+    BreakpointAttribute ** ref = &attrs;
+    char str[32];
+    unsigned i;
+
+    for (i = 0; i < sizeof(attr_list) / sizeof(char *); i++) {
+        ByteArrayOutputStream buf;
+        BreakpointAttribute * attr = (BreakpointAttribute *)loc_alloc_zero(sizeof(BreakpointAttribute));
+        OutputStream * out = create_byte_array_output_stream(&buf);
+        attr->name = loc_strdup(attr_list[i]);
+        switch (i) {
+        case 0:
+            json_write_boolean(out, 1);
+            break;
+        case 1:
+            snprintf(str, sizeof(str), "%#" PRIx64, (uint64_t)addr);
+            json_write_string(out, str);
+            break;
+        case 2:
+            json_write_string(out, "RunControl");
+            break;
+        }
+        write_stream(out, 0);
+        get_byte_array_output_stream_data(&buf, &attr->value, NULL);
+        *ref = attr;
+        ref = &attr->next;
+    }
+    return create_eventpoint_ext(attrs, ctx, aurix_entry_bp_hit, NULL);
+}
+
+/* Resolve the -e label (or _START with -f) and plant the entry BP. */
+static void aurix_plant_entry_bp(Context * ctx) {
+    const char * label = aurix_entry_label;
+    Symbol * sym = NULL;
+    ContextAddress addr = 0;
+
+    if (label == NULL && aurix_flasher_used) label = "_START";
+    if (label == NULL) return;
+
+    if (find_symbol_by_name(ctx, STACK_NO_FRAME, 0, label, &sym) < 0 || sym == NULL) {
+        trace(LOG_ALWAYS, "AURIX: stop-after-reset symbol '%s' not found", label);
+        return;
+    }
+    if (get_symbol_address(sym, &addr) < 0 || addr == 0) {
+        trace(LOG_ALWAYS, "AURIX: symbol '%s' has no address", label);
+        return;
+    }
+    if (g_entry_bp != NULL) {
+        destroy_eventpoint(g_entry_bp);
+        g_entry_bp = NULL;
+    }
+    g_entry_bp = aurix_create_entry_bp(addr, ctx);
+    trace(LOG_ALWAYS, "AURIX: entry function found at address: %08x (BP %s)",
+          (unsigned)addr, g_entry_bp != NULL ? "planted" : "FAILED");
+}
+
+/*
+ * Reset post-processing: the device reboots after the reset, so CSFR
+ * accesses fail for a short window (M17).  Wait it out, then plant the
+ * stop-after-reset breakpoint and release the halt (M17b).
+ */
+static void aurix_post_reset_event(void * args) {
+    Context * ctx = (Context *)args;
+    int core = EXT(ctx)->core_index;
+    int tries;
+
+    for (tries = 0; tries < 400; tries++) {
+        uint32_t v = 0;
+        if (core_csfr_read(core, AURIX_CSFR_DBGSR, &v) == 0) break;
+    }
+    aurix_plant_entry_bp(ctx);
+    for (tries = 0; tries < 40; tries++) {
+        if (core_run(core) == 0) break;
+    }
+    send_context_started_event(ctx);
+    context_unlock(ctx);
+}
+
+/*
  * ContextReset service: device reset through the TAS DEVICE_CONNECT
  * command with the RESET_AND_HALT feature (option 0x0003, M17 mechanism:
  * a repeated DC on an active session performs the reset; DBGSR is left
@@ -660,13 +766,10 @@ static int aurix_reset(Context * ctx, const ResetParams * params) {
         if (!ctx->stopped) post_async_stop_event(ctx);
     }
     else {
-        /* release the halt (M17b: DBGSR run write keeps DE=1) - retry
-         * through the reboot window, tolerate transient failures */
-        int tries;
-        for (tries = 0; tries < 20; tries++) {
-            if (core_run(core) == 0) break;
-        }
-        send_context_started_event(ctx);
+        /* run after the reset: the post-processing (entry BP + halt
+         * release) waits out the reboot window, see above */
+        context_lock(ctx);
+        post_event_with_delay(aurix_post_reset_event, ctx, 100000);
     }
     return 0;
 }
