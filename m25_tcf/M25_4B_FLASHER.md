@@ -157,3 +157,17 @@ AURIX: DEVICE_CONNECT failed (tas_err=0x20)
   (b) **das_api.dll -> 표준 DAS 서비스(das.dll)** - tas_server 제거 가능성
       (표준 DAS가 AURDUINO를 인식하는지가 관건 - 다음 실험)
 - 다음: 28개 함수 역할 파악 -> 디바이스 목록 조회 테스트 -> AURDUINO 인식 판정
+
+## 11. M25-4c 7차: 아키텍처 확정 (2026-10-19)
+
+- **정정**: `C:\WINDOWS\system32\das.dll` = Windows "Device Association Service" (무관, 이름 중복)
+- **Infineon 스택**: `das_api.dll`(TAS 클라이언트, "Infineon"/TAS_INSTALL_DIR/start_tas_server.bat 문자열)
+  + `mcdxdas.dll`(MCD↔DAS 브리지, 2026-05-02 동일 빌드) + `tas_server.exe`(사용자 TAS 서버 = AURDUINO 드라이버)
+- **원본 경로**: aurix-debugger -> MCD -> mcdxdas.dll -> das_api.dll -> tas_server -> FTD2XX -> AURDUINO
+  (원본 `-p "Board"` = TAS 타깃 선택 - 우리 `-p` 구현과 일치)
+- **das_api.dll API**: das_api_load -> 정보 구조체 + 약 28개 함수 포인터;
+  함수들은 TAS 세션 오브젝트(매직 0x1B30CCF7 + 버전 3/4) 검증 후 동작;
+  다수 엔트리가 동일 스텁(0x1D30)을 가리킴(미지원 함수 패턴)
+- **결론**: tas_server는 커스텀 어댑터의 드라이버로 **필수** - 제거하려면 FTDI/DAS 저수준 재구현(대규모).
+  실질 대안: 에이전트가 das_api.dll(공식 클라이언트) 사용 (경로 a) - tas_server 유지
+- 다음: das_api.dll 함수 역할 매핑(디바이스 목록) 또는 플래셔 블로커(step 기반 run) 우선순위 결정
